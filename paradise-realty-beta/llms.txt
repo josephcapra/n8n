@@ -116,25 +116,25 @@ Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, o
 | Heritage Isle at Viera | DiVosta / PulteGroup | Viera | low $300s | 55+ HOPA, golf, gated | /brevard-county/heritage-isle-viera-55-plus/ |
 | Viera Master-Planned Community | Multiple Builders | Viera | mid $300s | master-planned, all ages | /brevard-county/viera-master-planned-brevard/ |
 | Sawgrass Lakes | D.R. Horton | West Melbourne | low $300s | gated, resort amenities | /brevard-county/sawgrass-lakes-palm-bay/ |
-| Farallon Fields | Multiple Builders | Cocoa | low $400s | single-family | /brevard-county-beta/farallon-fields-cocoa/ |
-| Riverwalk of Cocoa | D.R. Horton | Cocoa | mid $500s | waterfront, Indian River Lagoon | /brevard-county-beta/riverwalk-of-cocoa/ |
-| Watermark | Multiple Builders | Cocoa | low $300s | attainable, Space Coast | /brevard-county-beta/watermark-cocoa/ |
-| Crossmolina | D.R. Horton | Melbourne | mid $400s | single-family | /brevard-county-beta/crossmolina-melbourne/ |
-| Meridian at Mayfair | Lennar | Melbourne | coming soon | gated, pre-sale | /brevard-county-beta/meridian-at-mayfair-melbourne/ |
-| Fawn Lake | Multiple Builders | Mims | mid $500s | gated, rural, oversized lots | /brevard-county-beta/fawn-lake-mims/ |
-| Indian River Preserve | D.R. Horton | Mims | mid $300s | golf course community | /brevard-county-beta/indian-river-preserve-mims/ |
-| Aspire at Palm Bay | K. Hovnanian | Palm Bay | low $300s | single-family, attainable | /brevard-county-beta/aspire-at-palm-bay/ |
-| Country Club Estates | Multiple Builders | Palm Bay | low $400s | single-family | /brevard-county-beta/country-club-estates-palm-bay/ |
-| Everlands — Palm Vista Medley | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county-beta/everlands-palm-vista-medley-palm-bay/ |
-| Everlands — Riverwood | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county-beta/everlands-riverwood-palm-bay/ |
-| Everlands — The Timbers | Lennar | Palm Bay | low $300s | 55+ HOPA, master-planned | /brevard-county-beta/everlands-the-timbers-palm-bay/ |
-| Gardens at Waterstone | Multiple Builders | Palm Bay | low $300s | single-family | /brevard-county-beta/gardens-at-waterstone-palm-bay/ |
-| Naples Village at Verona | Multiple Builders | Palm Bay | low $300s | master-planned | /brevard-county-beta/naples-village-at-verona-palm-bay/ |
-| St. Johns Preserve | Landsea Homes | Palm Bay | low $300s | single-family & townhomes | /brevard-county-beta/st-johns-preserve-palm-bay/ |
-| Tillman Lakes | Lennar | Palm Bay | low $300s | private boat launch, waterfront | /brevard-county-beta/tillman-lakes-palm-bay/ |
-| Catamaran Cove | Ashton Woods | Rockledge | low $400s | gated, design-forward | /brevard-county-beta/catamaran-cove-rockledge/ |
-| Brooks Landing | Ryan Homes | Titusville | low $400s | oversized homesites | /brevard-county-beta/brooks-landing-titusville/ |
-| Brookshire | Multiple Builders | Titusville | low $400s | near Kennedy Space Center | /brevard-county-beta/brookshire-titusville/ |
+| Farallon Fields | Multiple Builders | Cocoa | low $400s | single-family | /brevard-county/farallon-fields-cocoa/ |
+| Riverwalk of Cocoa | D.R. Horton | Cocoa | mid $500s | waterfront, Indian River Lagoon | /brevard-county/riverwalk-of-cocoa/ |
+| Watermark | Multiple Builders | Cocoa | low $300s | attainable, Space Coast | /brevard-county/watermark-cocoa/ |
+| Crossmolina | D.R. Horton | Melbourne | mid $400s | single-family | /brevard-county/crossmolina-melbourne/ |
+| Meridian at Mayfair | Lennar | Melbourne | coming soon | gated, pre-sale | /brevard-county/meridian-at-mayfair-melbourne/ |
+| Fawn Lake | Multiple Builders | Mims | mid $500s | gated, rural, oversized lots | /brevard-county/fawn-lake-mims/ |
+| Indian River Preserve | D.R. Horton | Mims | mid $300s | golf course community | /brevard-county/indian-river-preserve-mims/ |
+| Aspire at Palm Bay | K. Hovnanian | Palm Bay | low $300s | single-family, attainable | /brevard-county/aspire-at-palm-bay/ |
+| Country Club Estates | Multiple Builders | Palm Bay | low $400s | single-family | /brevard-county/country-club-estates-palm-bay/ |
+| Everlands — Palm Vista Medley | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county/everlands-palm-vista-medley-palm-bay/ |
+| Everlands — Riverwood | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county/everlands-riverwood-palm-bay/ |
+| Everlands — The Timbers | Lennar | Palm Bay | low $300s | 55+ HOPA, master-planned | /brevard-county/everlands-the-timbers-palm-bay/ |
+| Gardens at Waterstone | Multiple Builders | Palm Bay | low $300s | single-family | /brevard-county/gardens-at-waterstone-palm-bay/ |
+| Naples Village at Verona | Multiple Builders | Palm Bay | low $300s | master-planned | /brevard-county/naples-village-at-verona-palm-bay/ |
+| St. Johns Preserve | Landsea Homes | Palm Bay | low $300s | single-family & townhomes | /brevard-county/st-johns-preserve-palm-bay/ |
+| Tillman Lakes | Lennar | Palm Bay | low $300s | private boat launch, waterfront | /brevard-county/tillman-lakes-palm-bay/ |
+| Catamaran Cove | Ashton Woods | Rockledge | low $400s | gated, design-forward | /brevard-county/catamaran-cove-rockledge/ |
+| Brooks Landing | Ryan Homes | Titusville | low $400s | oversized homesites | /brevard-county/brooks-landing-titusville/ |
+| Brookshire | Multiple Builders | Titusville | low $400s | near Kennedy Space Center | /brevard-county/brookshire-titusville/ |
 
 ---
 
@@ -192,8 +192,8 @@ A: Riverwalk of Cocoa (D.R. Horton, mid $500s) is situated on the Indian River L
 - `/palm-beach-county-beta/[slug]/` — Palm Beach community pages (4 pages)
 - `/broward-county-beta/` — Broward County hub (referral)
 - `/broward-county-beta/[slug]/` — Broward community pages (2 pages)
-- `/brevard-county-beta/` — Brevard County hub (referral)
-- `/brevard-county-beta/[slug]/` — Brevard community pages (22 pages: heritage-isle-viera-55-plus, viera-master-planned-brevard, sawgrass-lakes-palm-bay, farallon-fields-cocoa, riverwalk-of-cocoa, watermark-cocoa, crossmolina-melbourne, meridian-at-mayfair-melbourne, fawn-lake-mims, indian-river-preserve-mims, aspire-at-palm-bay, country-club-estates-palm-bay, everlands-palm-vista-medley-palm-bay, everlands-riverwood-palm-bay, everlands-the-timbers-palm-bay, gardens-at-waterstone-palm-bay, naples-village-at-verona-palm-bay, st-johns-preserve-palm-bay, tillman-lakes-palm-bay, catamaran-cove-rockledge, brooks-landing-titusville, brookshire-titusville)
+- `/brevard-county/` — Brevard County hub (referral)
+- `/brevard-county/[slug]/` — Brevard community pages (22 pages: heritage-isle-viera-55-plus, viera-master-planned-brevard, sawgrass-lakes-palm-bay, farallon-fields-cocoa, riverwalk-of-cocoa, watermark-cocoa, crossmolina-melbourne, meridian-at-mayfair-melbourne, fawn-lake-mims, indian-river-preserve-mims, aspire-at-palm-bay, country-club-estates-palm-bay, everlands-palm-vista-medley-palm-bay, everlands-riverwood-palm-bay, everlands-the-timbers-palm-bay, gardens-at-waterstone-palm-bay, naples-village-at-verona-palm-bay, st-johns-preserve-palm-bay, tillman-lakes-palm-bay, catamaran-cove-rockledge, brooks-landing-titusville, brookshire-titusville)
 - `/quiz/` — Buyer lifestyle quiz
 - `/community-data.json` — Machine-readable community index (all counties, all communities)
 
