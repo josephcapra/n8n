@@ -1,0 +1,351 @@
+{
+  "generated": "2026-05-06",
+  "source": "Paradise Realty FLA \u2014 paradiserealtyfla.com",
+  "description": "Machine-readable index of new construction communities served by Paradise Realty FLA. Prices reflect builder-published starting prices and are subject to change.",
+  "communities": [
+    {
+      "name": "Heritage Isle at Viera",
+      "county": "Brevard",
+      "city": "Viera",
+      "builder": "DiVosta / PulteGroup",
+      "price_from": "low $300s",
+      "tags": [
+        "55plus",
+        "golf",
+        "gated",
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.2817,
+      "lng": -80.7287,
+      "url": "/brevard-county/heritage-isle-viera-55-plus/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Viera Master-Planned Community",
+      "county": "Brevard",
+      "city": "Viera",
+      "builder": "Multiple Builders",
+      "price_from": "mid $300s",
+      "tags": [
+        "single-family",
+        "master-planned"
+      ],
+      "lat": 28.2613,
+      "lng": -80.7229,
+      "url": "/brevard-county/viera-master-planned-brevard/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Sawgrass Lakes",
+      "county": "Brevard",
+      "city": "West Melbourne",
+      "builder": "D.R. Horton",
+      "price_from": "low $300s",
+      "tags": [
+        "gated",
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.0521,
+      "lng": -80.6641,
+      "url": "/brevard-county/sawgrass-lakes-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Farallon Fields",
+      "county": "Brevard",
+      "city": "Cocoa",
+      "builder": "Multiple Builders",
+      "price_from": "low $400s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.3921,
+      "lng": -80.7562,
+      "url": "/brevard-county-beta/farallon-fields-cocoa/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Riverwalk of Cocoa",
+      "county": "Brevard",
+      "city": "Cocoa",
+      "builder": "D.R. Horton",
+      "price_from": "mid $500s",
+      "tags": [
+        "waterfront",
+        "single-family"
+      ],
+      "lat": 28.3636,
+      "lng": -80.7234,
+      "url": "/brevard-county-beta/riverwalk-of-cocoa/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Watermark",
+      "county": "Brevard",
+      "city": "Cocoa",
+      "builder": "Multiple Builders",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.3895,
+      "lng": -80.7634,
+      "url": "/brevard-county-beta/watermark-cocoa/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Crossmolina",
+      "county": "Brevard",
+      "city": "Melbourne",
+      "builder": "D.R. Horton",
+      "price_from": "mid $400s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.0967,
+      "lng": -80.6489,
+      "url": "/brevard-county-beta/crossmolina-melbourne/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Meridian at Mayfair",
+      "county": "Brevard",
+      "city": "Melbourne",
+      "builder": "Lennar",
+      "price_from": "coming soon",
+      "tags": [
+        "gated",
+        "single-family",
+        "coming-soon"
+      ],
+      "lat": 28.0657,
+      "lng": -80.6234,
+      "url": "/brevard-county-beta/meridian-at-mayfair-melbourne/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Fawn Lake",
+      "county": "Brevard",
+      "city": "Mims",
+      "builder": "Multiple Builders",
+      "price_from": "mid $500s",
+      "tags": [
+        "gated",
+        "single-family",
+        "golf"
+      ],
+      "lat": 28.6636,
+      "lng": -80.8347,
+      "url": "/brevard-county-beta/fawn-lake-mims/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Indian River Preserve",
+      "county": "Brevard",
+      "city": "Mims",
+      "builder": "D.R. Horton",
+      "price_from": "mid $300s",
+      "tags": [
+        "golf",
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.6425,
+      "lng": -80.8213,
+      "url": "/brevard-county-beta/indian-river-preserve-mims/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Aspire at Palm Bay",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "K. Hovnanian",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.0345,
+      "lng": -80.5987,
+      "url": "/brevard-county-beta/aspire-at-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Country Club Estates",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Multiple Builders",
+      "price_from": "low $400s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 27.9967,
+      "lng": -80.6578,
+      "url": "/brevard-county-beta/country-club-estates-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Everlands \u2014 Palm Vista Medley",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Lennar",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k",
+        "master-planned"
+      ],
+      "lat": 28.0456,
+      "lng": -80.6201,
+      "url": "/brevard-county-beta/everlands-palm-vista-medley-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Everlands \u2014 Riverwood",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Lennar",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k",
+        "master-planned"
+      ],
+      "lat": 28.0312,
+      "lng": -80.6156,
+      "url": "/brevard-county-beta/everlands-riverwood-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Everlands \u2014 The Timbers",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Lennar",
+      "price_from": "low $300s",
+      "tags": [
+        "55plus",
+        "single-family",
+        "under500k",
+        "master-planned"
+      ],
+      "lat": 28.0389,
+      "lng": -80.6189,
+      "url": "/brevard-county-beta/everlands-the-timbers-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Gardens at Waterstone",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Multiple Builders",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 27.9876,
+      "lng": -80.5934,
+      "url": "/brevard-county-beta/gardens-at-waterstone-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Naples Village at Verona",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Multiple Builders",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.0123,
+      "lng": -80.6034,
+      "url": "/brevard-county-beta/naples-village-at-verona-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "St. Johns Preserve",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Landsea Homes",
+      "price_from": "low $300s",
+      "tags": [
+        "single-family",
+        "townhome",
+        "under500k"
+      ],
+      "lat": 28.0234,
+      "lng": -80.6178,
+      "url": "/brevard-county-beta/st-johns-preserve-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Tillman Lakes",
+      "county": "Brevard",
+      "city": "Palm Bay",
+      "builder": "Lennar",
+      "price_from": "low $300s",
+      "tags": [
+        "waterfront",
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.0567,
+      "lng": -80.5923,
+      "url": "/brevard-county-beta/tillman-lakes-palm-bay/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Catamaran Cove",
+      "county": "Brevard",
+      "city": "Rockledge",
+      "builder": "Ashton Woods",
+      "price_from": "low $400s",
+      "tags": [
+        "gated",
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.3012,
+      "lng": -80.7312,
+      "url": "/brevard-county-beta/catamaran-cove-rockledge/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Brooks Landing",
+      "county": "Brevard",
+      "city": "Titusville",
+      "builder": "Ryan Homes",
+      "price_from": "low $400s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.5892,
+      "lng": -80.8034,
+      "url": "/brevard-county-beta/brooks-landing-titusville/",
+      "last_verified": "2026-05"
+    },
+    {
+      "name": "Brookshire",
+      "county": "Brevard",
+      "city": "Titusville",
+      "builder": "Multiple Builders",
+      "price_from": "low $400s",
+      "tags": [
+        "single-family",
+        "under500k"
+      ],
+      "lat": 28.5934,
+      "lng": -80.789,
+      "url": "/brevard-county-beta/brookshire-titusville/",
+      "last_verified": "2026-05"
+    }
+  ]
+}

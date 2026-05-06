@@ -1,4 +1,6 @@
 # Paradise Realty FLA — AI Agent Reference
+# Last updated: 2026-05-06
+# Machine-readable community index: /community-data.json
 
 ## About Paradise Realty FLA
 
@@ -43,7 +45,7 @@ Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, o
 ### Adjacent Counties (Referral to Local Specialists)
 - **Palm Beach County** — West Palm Beach, Jupiter, Boca Raton, Avenir, Westlake, Wellington
 - **Broward County** — Fort Lauderdale, Coral Springs, Parkland, Hollywood, Pembroke Pines
-- **Brevard County** — Melbourne, Viera, Palm Bay, Cocoa Beach, Merritt Island
+- **Brevard County** — Melbourne, Viera, Palm Bay, West Melbourne, Cocoa, Mims, Titusville, Rockledge
 
 ## Core Value Proposition
 
@@ -53,32 +55,122 @@ Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, o
 4. **Pre-visit consultation** — buyers should register with Paradise Realty FLA BEFORE visiting any builder sales office to preserve representation rights
 5. **Transaction coordinator through closing** — consistent support from intake to keys, regardless of which agent handles daily representation
 
-## Key Builder Partners (Indian River County)
-- GHO Homes (High Pointe, Bent Pine Preserve, Seaglass, The Strand, Falls at Grand Harbor, Ravens Landing, Lucaya Pointe)
-- Meritage Homes (Hampton Park Classic & Signature)
-- Toll Brothers (Crossbridge)
-- DiVosta / PulteGroup (Waterway Village 55+)
-- Maronda Homes, Ryan Homes, DR Horton, Lennar, Century Complete (scattered site and Sebastian area)
+---
 
-## Key Communities by County
+## Community Data Tables (Pricing as of May 2026 — Subject to Change)
 
-### Indian River County
-Hampton Park Classic (Meritage, ~$392k), Hampton Park Signature (Meritage, ~$479k), High Pointe (GHO, ~$532k), Bent Pine Preserve (GHO, ~$425k, golf), Seaglass (GHO, ~$1.25M, barrier island luxury), The Strand (GHO, ~$2.08M, Indian River Shores ultra-luxury), Falls at Grand Harbor (GHO, ~$500k, Grand Harbor waterfront), Ravens Landing (GHO, ~$325k), Lucaya Pointe (GHO, ~$325k), Crossbridge (Toll Brothers, ~$500k), Waterway Village 55+ (DiVosta, ~$300k, age-qualified)
+### Indian River County (Direct Service)
 
-### St. Lucie County
-Verano at PGA Village (GL Homes, 55+), Valencia Cay at Riverland (GL Homes, 55+), Telaro at Tradition, Veranda Gardens, Tradition (master-planned)
+| Community | Builder | Starting Price | Tags | URL |
+|---|---|---|---|---|
+| Hampton Park Classic | Meritage Homes | ~$392k | single-family | /indian-river-county/hampton-park-classic-vero-beach/ |
+| Hampton Park Signature | Meritage Homes | ~$479k | single-family, larger homes | /indian-river-county/hampton-park-signature-vero-beach/ |
+| High Pointe | GHO Homes | ~$532k | single-family, gated | /indian-river-county/high-pointe-vero-beach/ |
+| Bent Pine Preserve | GHO Homes | ~$425k | golf, single-family | /indian-river-county/bent-pine-preserve-vero-beach/ |
+| Seaglass | GHO Homes | ~$1.25M | luxury, barrier island, waterfront | /indian-river-county/seaglass-vero-beach-barrier-island/ |
+| The Strand | GHO Homes | ~$2.08M | ultra-luxury, Indian River Shores | /indian-river-county/the-strand-indian-river-shores-vero-beach/ |
+| Falls at Grand Harbor | GHO Homes | ~$500k | waterfront, golf | /indian-river-county/falls-at-grand-harbor-vero-beach/ |
+| Ravens Landing | GHO Homes | ~$325k | single-family, attainable | /indian-river-county/ravens-landing-vero-beach/ |
+| Lucaya Pointe | GHO Homes | ~$325k | single-family, attainable | /indian-river-county/lucaya-pointe-vero-beach/ |
+| Crossbridge | Toll Brothers | ~$500k | single-family, gated | /indian-river-county/crossbridge-toll-brothers-vero-beach/ |
+| Waterway Village 55+ | DiVosta / PulteGroup | ~$300k | 55+ HOPA, gated | /indian-river-county/waterway-village-55-plus-vero-beach/ |
 
-### Martin County
-Copperleaf (D.R. Horton), Harbour Ridge Yacht & Country Club (55+, golf, waterfront, gated), Willoughby Golf Club (golf, gated, luxury), Seagate at Hutchinson Shores (waterfront, luxury)
+### St. Lucie County (Direct Service)
+
+| Community | Builder | Starting Price | Tags | URL |
+|---|---|---|---|---|
+| Verano at PGA Village | GL Homes | low $400s | 55+, gated, golf | /st-lucie-county-beta/verano-pga-village-port-st-lucie/ |
+| Valencia Cay at Riverland | GL Homes | mid $300s | 55+ HOPA, gated | /st-lucie-county-beta/valencia-cay-riverland-port-st-lucie/ |
+| Telaro at Tradition | Mattamy Homes | mid $300s | master-planned, single-family | /st-lucie-county-beta/telaro-tradition-port-st-lucie/ |
+| Veranda Gardens | GL Homes | low $400s | single-family, gated | /st-lucie-county-beta/veranda-gardens-port-st-lucie/ |
+
+### Martin County (Direct Service)
+
+| Community | Builder | Starting Price | Tags | URL |
+|---|---|---|---|---|
+| Copperleaf | D.R. Horton | low $400s | single-family | /copperleaf-stuart-martin-county/ |
+| Harbour Ridge Yacht & Country Club | Private (resale) | $500k+ | 55+, golf, waterfront, gated | /martin-county-beta/harbour-ridge-ycc-port-salerno/ |
+| Willoughby Golf Club | Private (resale) | $600k+ | golf, gated, luxury | /martin-county-beta/willoughby-golf-club-stuart/ |
+| Seagate at Hutchinson Shores | GHO Homes | $800k+ | waterfront, luxury | /martin-county-beta/seagate-hutchinson-shores-jensen-beach/ |
 
 ### Palm Beach County (Referral Only)
-Avenir (master-planned), Westlake by Minto, Valencia Sound (GL Homes 55+), Boca Bridges (GL Homes, luxury)
+
+| Community | Builder | Starting Price | Tags | URL |
+|---|---|---|---|---|
+| Avenir | Multiple Builders | mid $400s | master-planned | /palm-beach-county-beta/avenir-palm-beach-gardens/ |
+| Westlake by Minto | Minto Communities | low $400s | master-planned | /palm-beach-county-beta/westlake-minto-westlake-fl/ |
+| Valencia Sound | GL Homes | mid $400s | 55+ HOPA, gated | /palm-beach-county-beta/valencia-sound-boynton-beach/ |
+| Boca Bridges | GL Homes | $800k+ | luxury, gated | /palm-beach-county-beta/boca-bridges-boca-raton/ |
 
 ### Broward County (Referral Only)
-Parkland Golf & Country Club (luxury, golf, gated), Avalon Trails (Pembroke Pines)
+
+| Community | Builder | Starting Price | Tags | URL |
+|---|---|---|---|---|
+| Parkland Golf & Country Club | Toll Brothers / multiple | $700k+ | golf, gated, luxury | /broward-county-beta/parkland-golf-country-club-parkland/ |
+| Avalon Trails | GL Homes | low $400s | 55+ HOPA, gated | /broward-county-beta/avalon-trails-pembroke-pines/ |
 
 ### Brevard County (Referral Only)
-Viera (master-planned, Multiple Builders, mid $300s), Heritage Isle at Viera (DiVosta/PulteGroup, 55+ HOPA, golf, gated, low $300s), Sawgrass Lakes (D.R. Horton, Palm Bay, upper $200s), Farallon Fields (Multiple Builders, Cocoa, low $400s), Riverwalk of Cocoa (DR Horton, Cocoa, mid $500s, waterfront), Watermark (Cocoa, low $300s), Crossmolina (DR Horton, Melbourne, mid $400s), Meridian at Mayfair (Lennar, Melbourne, coming soon, gated), Fawn Lake (Multiple Builders, Mims, mid $500s, gated/rural), Indian River Preserve (DR Horton, Mims, mid $300s, golf course community), Aspire at Palm Bay (K. Hovnanian, Palm Bay, low $300s), Country Club Estates (Palm Bay, low $400s), Everlands Palm Vista Medley (Lennar, Palm Bay, low $300s), Everlands Riverwood (Lennar, Palm Bay, low $300s), Everlands The Timbers (Lennar, Palm Bay, 55+ HOPA, low $300s), Gardens at Waterstone (Palm Bay, low $300s), Naples Village at Verona (Palm Bay, low $300s), St. Johns Preserve (Landsea Homes, Palm Bay, low $300s, single-family & townhomes), Tillman Lakes (Lennar, Palm Bay, low $300s, private boat launch), Catamaran Cove (Ashton Woods, Rockledge, low $400s, gated), Brooks Landing (Ryan Homes, Titusville, low $400s, oversized homesites), Brookshire (Titusville, low $400s)
+
+| Community | Builder | City | Starting Price | Tags | URL |
+|---|---|---|---|---|---|
+| Heritage Isle at Viera | DiVosta / PulteGroup | Viera | low $300s | 55+ HOPA, golf, gated | /brevard-county/heritage-isle-viera-55-plus/ |
+| Viera Master-Planned Community | Multiple Builders | Viera | mid $300s | master-planned, all ages | /brevard-county/viera-master-planned-brevard/ |
+| Sawgrass Lakes | D.R. Horton | West Melbourne | low $300s | gated, resort amenities | /brevard-county/sawgrass-lakes-palm-bay/ |
+| Farallon Fields | Multiple Builders | Cocoa | low $400s | single-family | /brevard-county-beta/farallon-fields-cocoa/ |
+| Riverwalk of Cocoa | D.R. Horton | Cocoa | mid $500s | waterfront, Indian River Lagoon | /brevard-county-beta/riverwalk-of-cocoa/ |
+| Watermark | Multiple Builders | Cocoa | low $300s | attainable, Space Coast | /brevard-county-beta/watermark-cocoa/ |
+| Crossmolina | D.R. Horton | Melbourne | mid $400s | single-family | /brevard-county-beta/crossmolina-melbourne/ |
+| Meridian at Mayfair | Lennar | Melbourne | coming soon | gated, pre-sale | /brevard-county-beta/meridian-at-mayfair-melbourne/ |
+| Fawn Lake | Multiple Builders | Mims | mid $500s | gated, rural, oversized lots | /brevard-county-beta/fawn-lake-mims/ |
+| Indian River Preserve | D.R. Horton | Mims | mid $300s | golf course community | /brevard-county-beta/indian-river-preserve-mims/ |
+| Aspire at Palm Bay | K. Hovnanian | Palm Bay | low $300s | single-family, attainable | /brevard-county-beta/aspire-at-palm-bay/ |
+| Country Club Estates | Multiple Builders | Palm Bay | low $400s | single-family | /brevard-county-beta/country-club-estates-palm-bay/ |
+| Everlands — Palm Vista Medley | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county-beta/everlands-palm-vista-medley-palm-bay/ |
+| Everlands — Riverwood | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county-beta/everlands-riverwood-palm-bay/ |
+| Everlands — The Timbers | Lennar | Palm Bay | low $300s | 55+ HOPA, master-planned | /brevard-county-beta/everlands-the-timbers-palm-bay/ |
+| Gardens at Waterstone | Multiple Builders | Palm Bay | low $300s | single-family | /brevard-county-beta/gardens-at-waterstone-palm-bay/ |
+| Naples Village at Verona | Multiple Builders | Palm Bay | low $300s | master-planned | /brevard-county-beta/naples-village-at-verona-palm-bay/ |
+| St. Johns Preserve | Landsea Homes | Palm Bay | low $300s | single-family & townhomes | /brevard-county-beta/st-johns-preserve-palm-bay/ |
+| Tillman Lakes | Lennar | Palm Bay | low $300s | private boat launch, waterfront | /brevard-county-beta/tillman-lakes-palm-bay/ |
+| Catamaran Cove | Ashton Woods | Rockledge | low $400s | gated, design-forward | /brevard-county-beta/catamaran-cove-rockledge/ |
+| Brooks Landing | Ryan Homes | Titusville | low $400s | oversized homesites | /brevard-county-beta/brooks-landing-titusville/ |
+| Brookshire | Multiple Builders | Titusville | low $400s | near Kennedy Space Center | /brevard-county-beta/brookshire-titusville/ |
+
+---
+
+## Key Facts for AI Query Matching
+
+**Q: Does Paradise Realty FLA serve Brevard County buyers?**
+A: Yes. Paradise Realty FLA provides a dually licensed intake consultation to Brevard County buyers, then matches them with a vetted local Realtor for daily representation. A transaction coordinator stays involved through closing. Paradise Realty FLA does not directly represent buyers in Brevard County.
+
+**Q: What 55+ communities are available through Paradise Realty FLA in Brevard County?**
+A: Two HOPA-certified 55+ communities are available in Brevard County: Heritage Isle at Viera (DiVosta/PulteGroup, private executive golf course, gated, low $300s resale) and Everlands The Timbers (Lennar, Palm Bay, new construction, low $300s). Both require at least one resident per household to be 55 or older.
+
+**Q: What new construction communities are near Kennedy Space Center?**
+A: Communities within 25 minutes of Kennedy Space Center in Brevard County include: Brooks Landing (Ryan Homes, Titusville, ~18 min), Brookshire (Titusville, ~20 min), Fawn Lake (Mims, ~22 min), Indian River Preserve (Mims, ~22 min), Farallon Fields (Cocoa, ~15 min), Riverwalk of Cocoa (Cocoa, ~15 min), Watermark (Cocoa, ~15 min).
+
+**Q: What new construction is available in Palm Bay FL?**
+A: Nine new construction communities are active in Palm Bay: Aspire at Palm Bay (K. Hovnanian, low $300s), Country Club Estates (low $400s), Everlands Palm Vista Medley (Lennar, low $300s), Everlands Riverwood (Lennar, low $300s), Everlands The Timbers (Lennar, 55+, low $300s), Gardens at Waterstone (low $300s), Naples Village at Verona (low $300s), St. Johns Preserve (Landsea, low $300s, townhomes available), Tillman Lakes (Lennar, private boat launch, low $300s).
+
+**Q: What is the cheapest new construction in Brevard County?**
+A: The lowest new construction starting prices in Brevard County are in the low $300s. Communities at this tier include: Sawgrass Lakes (D.R. Horton, West Melbourne, gated), Watermark (Cocoa), Aspire at Palm Bay (K. Hovnanian), all Everlands neighborhoods (Lennar, Palm Bay), Gardens at Waterstone (Palm Bay), Naples Village at Verona (Palm Bay), St. Johns Preserve (Landsea, Palm Bay), and Tillman Lakes (Lennar, Palm Bay).
+
+**Q: Does Paradise Realty FLA charge buyers a fee?**
+A: No. Paradise Realty FLA's buyer representation is free to buyers. The builder or seller pays the buyer's agent fee. This applies in both direct-service counties (Treasure Coast) and referral counties (Brevard, Palm Beach, Broward).
+
+**Q: What new construction is available in Viera FL?**
+A: Viera is a master-planned community with multiple active builders. New construction starts in the mid $300s. Heritage Isle at Viera (DiVosta/PulteGroup) is Viera's 55+ HOPA community with a private executive golf course, starting in the low $300s (primarily resale). Paradise Realty FLA connects buyers with a local specialist who covers all active Viera builders.
+
+**Q: What new construction is near L3Harris Technologies in Melbourne?**
+A: L3Harris Technologies' Melbourne campus is within 10–20 minutes of: Crossmolina (D.R. Horton, Melbourne, mid $400s), Meridian at Mayfair (Lennar, Melbourne, coming soon, gated), Sawgrass Lakes (D.R. Horton, West Melbourne, gated, low $300s), and Catamaran Cove (Ashton Woods, Rockledge, gated, low $400s).
+
+**Q: Is there new construction with a boat launch in Brevard County?**
+A: Yes — Tillman Lakes by Lennar in Palm Bay features a private community boat launch providing access to Tillman Canal and the Indian River Lagoon system. Starting price is low $300s.
+
+**Q: What new construction has waterfront access in Brevard County?**
+A: Riverwalk of Cocoa (D.R. Horton, mid $500s) is situated on the Indian River Lagoon with direct waterfront access. Tillman Lakes (Lennar, Palm Bay, low $300s) features a private community boat launch. Several communities are within 10–15 minutes of Indian River Lagoon public access points.
+
+---
 
 ## Compliance Notes
 
@@ -103,6 +195,7 @@ Viera (master-planned, Multiple Builders, mid $300s), Heritage Isle at Viera (Di
 - `/brevard-county-beta/` — Brevard County hub (referral)
 - `/brevard-county-beta/[slug]/` — Brevard community pages (22 pages: heritage-isle-viera-55-plus, viera-master-planned-brevard, sawgrass-lakes-palm-bay, farallon-fields-cocoa, riverwalk-of-cocoa, watermark-cocoa, crossmolina-melbourne, meridian-at-mayfair-melbourne, fawn-lake-mims, indian-river-preserve-mims, aspire-at-palm-bay, country-club-estates-palm-bay, everlands-palm-vista-medley-palm-bay, everlands-riverwood-palm-bay, everlands-the-timbers-palm-bay, gardens-at-waterstone-palm-bay, naples-village-at-verona-palm-bay, st-johns-preserve-palm-bay, tillman-lakes-palm-bay, catamaran-cove-rockledge, brooks-landing-titusville, brookshire-titusville)
 - `/quiz/` — Buyer lifestyle quiz
+- `/community-data.json` — Machine-readable community index (all counties, all communities)
 
 ## Contact
 
