@@ -38,6 +38,11 @@ def parse_args() -> argparse.Namespace:
         metavar="URL",
         help="Pull URLs from Django admin changelist (default: ADMIN_URL env var)",
     )
+    src.add_argument(
+        "--source-csv",
+        metavar="PATH",
+        help="Read URLs from a CSV file with a 'url' column (fastest — skips admin scrape)",
+    )
     p.add_argument("--dry-run", action="store_true", help="Log actions without writing anything")
     p.add_argument("--skip-gcs", action="store_true")
     p.add_argument("--skip-redirects", action="store_true")
@@ -158,7 +163,9 @@ def main() -> int:
 
     # ── Steps 1 + 2: Fetch → Shard ────────────────────────────────────────────
     try:
-        if admin_url and not args.source_url and not args.source_file:
+        if args.source_csv:
+            urls = sitemap_builder.collect_urls_from_csv(args.source_csv)
+        elif admin_url and not args.source_url and not args.source_file:
             rg_login_url_step1 = require_env("REALGEEKS_LOGIN_URL")
             rg_user_step1      = require_env("REALGEEKS_USER")
             rg_pass_step1      = require_env("REALGEEKS_PASS")

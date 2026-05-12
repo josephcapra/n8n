@@ -1,6 +1,7 @@
 """Fetch, parse, shard, and generate sitemap XML files."""
 from __future__ import annotations
 
+import csv
 import html as _html
 import logging
 import time
@@ -106,6 +107,32 @@ def collect_urls(
 
     dupes = len(raw_urls) - len(urls)
     logger.info(f"  Collected {len(urls):,} unique URLs (removed {dupes} duplicates)")
+    return urls
+
+
+def collect_urls_from_csv(csv_path: str) -> list[str]:
+    """Read URLs from a CSV file that has a 'url' column (or use the first column)."""
+    logger.info("=" * 60)
+    logger.info("STEP 1: Reading URLs from CSV")
+    logger.info(f"  Source: {csv_path}")
+
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
+
+    seen: set[str] = set()
+    urls: list[str] = []
+
+    with path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        url_col = "url" if "url" in (reader.fieldnames or []) else (reader.fieldnames or ["url"])[0]
+        for row in reader:
+            u = row.get(url_col, "").strip()
+            if u and u not in seen:
+                seen.add(u)
+                urls.append(u)
+
+    logger.info(f"  Loaded {len(urls):,} unique URLs from column '{url_col}'")
     return urls
 
 
