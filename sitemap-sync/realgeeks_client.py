@@ -22,10 +22,17 @@ from pathlib import Path
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
-from playwright.sync_api import Page, sync_playwright
-from playwright.sync_api import TimeoutError as PWTimeout
-
 logger = logging.getLogger(__name__)
+
+# Imported lazily inside functions — playwright is not installed in the Cloud Run image
+# (Cloud Run uses --skip-redirects and never calls these functions)
+try:
+    from playwright.sync_api import Page, sync_playwright
+    from playwright.sync_api import TimeoutError as PWTimeout
+except ImportError:
+    Page = None  # type: ignore
+    sync_playwright = None  # type: ignore
+    PWTimeout = Exception  # type: ignore
 
 # ── Login selectors (login.realgeeks.com) ──────────────────────────────────────
 SEL_EMAIL    = "input[type='email'], input[placeholder='Email']"

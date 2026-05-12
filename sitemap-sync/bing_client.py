@@ -43,8 +43,16 @@ def _call(
                     f"Bing API 401 Unauthorized — BING_API_KEY is wrong or the site "
                     f"is not registered. Endpoint: {endpoint}"
                 )
+            data = resp.json() if resp.content else {}
+            if not resp.ok:
+                # ErrorCode 5 = ThrottleHost: Bing rate-limits per day.
+                # Sitemaps are already registered; treat as non-fatal.
+                if isinstance(data, dict) and data.get("ErrorCode") == 5:
+                    logger.warning(f"  Bing throttled (ErrorCode 5) — already submitted today, skipping")
+                    return {"throttled": True}
+                logger.error(f"  Bing API {resp.status_code} body: {str(data)[:500]}")
             resp.raise_for_status()
-            return resp.json() if resp.content else {}
+            return data
 
         except RuntimeError:
             raise  # Auth failures — do not retry
@@ -92,13 +100,16 @@ def submit_sitemaps(
     submitted: set[str] = set()
     for feed_url in sorted(this_run):
         try:
-            _call(
+            resp_data = _call(
                 "post",
                 "SubmitFeed",
                 api_key,
                 json_body={"siteUrl": site_url, "feedUrl": feed_url},
             )
-            logger.info(f"  Submitted: {feed_url}")
+            if resp_data.get("throttled"):
+                logger.info(f"  Already registered (throttled): {feed_url}")
+            else:
+                logger.info(f"  Submitted: {feed_url}")
             submitted.add(feed_url)
             result["submitted"] += 1
         except RuntimeError:

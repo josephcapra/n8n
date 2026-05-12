@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 import admin_scraper
 import bing_client
+import email_report
 import gcs_client
 import gsc_client
 import realgeeks_client
@@ -43,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         metavar="PATH",
         help="Read URLs from a CSV file with a 'url' column (fastest — skips admin scrape)",
     )
+    src.add_argument(
+        "--source-gcs-csv",
+        metavar="GCS_PATH",
+        help="Download CSV from GCS then use as source (e.g. gs://bucket/path/file.csv)",
+    )
+    p.add_argument("--email-to", metavar="ADDRESS", help="Send summary report to this email via SendGrid")
     p.add_argument("--dry-run", action="store_true", help="Log actions without writing anything")
     p.add_argument("--skip-gcs", action="store_true")
     p.add_argument("--skip-redirects", action="store_true")
@@ -161,10 +168,24 @@ def main() -> int:
     site_url      = require_env("SITE_URL")
     redirect_base = os.getenv("REDIRECT_BASE_URL", site_url)
 
+    # ── GCS CSV download (Cloud Run path) ────────────────────────────────────
+    source_csv_path = args.source_csv
+    if args.source_gcs_csv:
+        import tempfile
+        from google.cloud import storage as _gcs
+        gcs_uri = args.source_gcs_csv.replace("gs://", "")
+        bucket_part, blob_part = gcs_uri.split("/", 1)
+        logger.info(f"Downloading CSV from gs://{bucket_part}/{blob_part}")
+        _client = _gcs.Client(project=os.getenv("GCS_PROJECT"))
+        _tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
+        _client.bucket(bucket_part).blob(blob_part).download_to_filename(_tmp.name)
+        source_csv_path = _tmp.name
+        logger.info(f"  Downloaded to {source_csv_path}")
+
     # ── Steps 1 + 2: Fetch → Shard ────────────────────────────────────────────
     try:
-        if args.source_csv:
-            urls = sitemap_builder.collect_urls_from_csv(args.source_csv)
+        if source_csv_path:
+            urls = sitemap_builder.collect_urls_from_csv(source_csv_path)
         elif admin_url and not args.source_url and not args.source_file:
             rg_login_url_step1 = require_env("REALGEEKS_LOGIN_URL")
             rg_user_step1      = require_env("REALGEEKS_USER")
@@ -304,6 +325,24 @@ def main() -> int:
         log_file=log_file,
         dry_run=args.dry_run,
     )
+
+    # ── Email report ──────────────────────────────────────────────────────────
+    email_to = args.email_to or os.getenv("REPORT_EMAIL_TO", "")
+    sendgrid_key = os.getenv("SENDGRID_API_KEY", "")
+    if email_to and sendgrid_key and not args.dry_run:
+        email_report.send_report(
+            to_email=email_to,
+            sendgrid_key=sendgrid_key,
+            url_count=len(urls),
+            shard_count=len(shards),
+            gcs=gcs_result,
+            redirects=rg_result,
+            gsc=gsc_result,
+            bing=bing_result,
+            runtime=runtime,
+            success=success,
+        )
+
     return 0 if success else 1
 
 

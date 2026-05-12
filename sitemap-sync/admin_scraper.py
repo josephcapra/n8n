@@ -20,8 +20,6 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
 
-from playwright.sync_api import sync_playwright
-
 logger = logging.getLogger(__name__)
 
 
@@ -150,6 +148,7 @@ def collect_urls_from_admin(
     per_page: int = 100
     first_page_urls: list[str] = []
 
+    from playwright.sync_api import sync_playwright  # not installed in Cloud Run image
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=_browser_data_dir(),
