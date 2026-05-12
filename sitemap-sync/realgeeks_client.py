@@ -165,11 +165,11 @@ def _ensure_logged_in(
     logger.info(f"  Checking session — navigating to: {redirects_url}")
     page.goto(redirects_url, wait_until="networkidle")
 
-    if "login.realgeeks.com" in page.url or "sign-in" in page.url:
+    if "login.realgeeks.com" in page.url or "sign-in" in page.url or "verify-2fa" in page.url:
         logger.info("  Session expired — logging in via RealGeeks OAuth")
         _login(page, login_url, username, password)
-    elif "login" in page.url and "paradiserealtyfla" not in page.url:
-        logger.info("  Unexpected login redirect — attempting login")
+    elif "paradiserealtyfla.com" not in page.url:
+        logger.info("  Unexpected redirect — attempting login")
         _login(page, login_url, username, password)
     else:
         logger.info("  Already logged in (cached session)")
@@ -214,7 +214,7 @@ def _login(page: Page, login_url: str, username: str, password: str) -> None:
     page.wait_for_load_state("networkidle")
 
     # Handle 2FA if triggered after credentials
-    if page.query_selector("input[name='2faMethod']"):
+    if page.query_selector("input[name='2faMethod']") or page.query_selector("input[name='code']"):
         raise RealGeeksAuthError(
             "2FA is enabled on this account. Automated login cannot complete 2FA.\n"
             "To fix: open a Chromium browser pointed at the same profile and log in manually:\n"
@@ -328,8 +328,11 @@ def _delete(
 def pre_login(login_url: str, username: str, password: str) -> None:
     """
     Standalone helper: authenticate and save session to the persistent profile.
-    Run this once when setting up, or after a session expires:
-      python -c "from realgeeks_client import pre_login; pre_login(...)"
+    Opens a visible browser. If 2FA appears, complete it in the browser window —
+    the script waits up to 3 minutes for you to finish.
+
+    Run via:
+      python3 sitemap-sync/pre_login.py
     """
     data_dir = _browser_data_dir()
     print(f"Logging in and saving session to: {data_dir}")
@@ -337,6 +340,7 @@ def pre_login(login_url: str, username: str, password: str) -> None:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=data_dir,
             headless=False,  # Visible — needed if 2FA prompt appears
+            args=["--disable-blink-features=AutomationControlled"],
         )
         page = ctx.new_page()
         page.goto(login_url, wait_until="networkidle")
@@ -346,8 +350,9 @@ def pre_login(login_url: str, username: str, password: str) -> None:
             page.click(SEL_SUBMIT)
             page.wait_for_load_state("networkidle")
             if page.query_selector("input[name='2faMethod']"):
-                print("⚠️  2FA required — complete it in the browser window, then press Enter here.")
-                input("Press Enter after completing 2FA...")
-                page.wait_for_url("*paradiserealtyfla.com*", timeout=60_000)
-        print(f"Logged in — session saved. URL: {page.url}")
+                print("⚠️  2FA required — complete it in the browser window now.")
+                print("    Waiting up to 3 minutes for you to finish...")
+                # Wait for OAuth callback — user completes 2FA in the visible browser
+                page.wait_for_url("*paradiserealtyfla.com/admin*", timeout=180_000)
+        print(f"✅ Logged in — session saved. URL: {page.url}")
         ctx.close()
