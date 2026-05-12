@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+import admin_scraper
 import bing_client
 import gcs_client
 import gsc_client
@@ -32,6 +33,11 @@ def parse_args() -> argparse.Namespace:
     src = p.add_mutually_exclusive_group()
     src.add_argument("--source-url", metavar="URL", help="Override source sitemap URL")
     src.add_argument("--source-file", metavar="PATH", help="Read sitemap from local XML file")
+    src.add_argument(
+        "--admin-url",
+        metavar="URL",
+        help="Pull URLs from Django admin changelist (default: ADMIN_URL env var)",
+    )
     p.add_argument("--dry-run", action="store_true", help="Log actions without writing anything")
     p.add_argument("--skip-gcs", action="store_true")
     p.add_argument("--skip-redirects", action="store_true")
@@ -142,22 +148,33 @@ def main() -> int:
     logger.info("=" * 60)
 
     # ── Config ────────────────────────────────────────────────────────────────
-    source_url = (
-        args.source_url
-        or os.getenv("SOURCE_SITEMAP_URL", "http://paradiserealtyfla.com/sitemap.xml")
-    )
-    gcs_project  = require_env("GCS_PROJECT")
-    gcs_bucket   = require_env("GCS_BUCKET")
-    gcs_prefix   = os.getenv("GCS_PREFIX", "sitemaps/")
-    site_url     = require_env("SITE_URL")
+    admin_url     = args.admin_url or os.getenv("ADMIN_URL", "")
+    source_url    = args.source_url or os.getenv("SOURCE_SITEMAP_URL", "")
+    gcs_project   = require_env("GCS_PROJECT")
+    gcs_bucket    = require_env("GCS_BUCKET")
+    gcs_prefix    = os.getenv("GCS_PREFIX", "sitemaps/")
+    site_url      = require_env("SITE_URL")
     redirect_base = os.getenv("REDIRECT_BASE_URL", site_url)
 
     # ── Steps 1 + 2: Fetch → Shard ────────────────────────────────────────────
     try:
-        urls = sitemap_builder.collect_urls(
-            source_url=None if args.source_file else source_url,
-            source_file=args.source_file,
-        )
+        if admin_url and not args.source_url and not args.source_file:
+            rg_login_url_step1 = require_env("REALGEEKS_LOGIN_URL")
+            rg_user_step1      = require_env("REALGEEKS_USER")
+            rg_pass_step1      = require_env("REALGEEKS_PASS")
+            urls = admin_scraper.collect_urls_from_admin(
+                admin_url=admin_url,
+                site_url=site_url,
+                login_url=rg_login_url_step1,
+                username=rg_user_step1,
+                password=rg_pass_step1,
+            )
+        else:
+            effective_url = source_url or "http://paradiserealtyfla.com/sitemap.xml"
+            urls = sitemap_builder.collect_urls(
+                source_url=None if args.source_file else effective_url,
+                source_file=args.source_file,
+            )
         shards = sitemap_builder.build_shards(urls)
         index_xml = sitemap_builder.build_index(shards, site_url)
     except Exception as e:

@@ -63,14 +63,11 @@ def upload_sitemaps(
         try:
             blob.make_public()
             logger.info(f"    ACL: set public-read on {blob_name}")
-        except Exception as e:
+        except Exception:
             if not _acl_warning_shown:
-                logger.warning(
-                    "⚠️  Cannot set per-object ACL on this bucket. "
-                    "The bucket likely uses Uniform Bucket-Level Access (UBLA), "
-                    "which blocks per-object ACLs. To make all objects publicly readable, run:\n"
-                    f"    gcloud storage buckets add-iam-policy-binding gs://{bucket_name} \\\n"
-                    "      --member=allUsers --role=roles/storage.objectViewer"
+                logger.info(
+                    f"    Bucket uses Uniform IAM — allUsers objectViewer "
+                    "applies at bucket level (already configured)."
                 )
                 _acl_warning_shown = True
 

@@ -117,17 +117,19 @@ def submit_sitemaps(
             params={"siteUrl": site_url},
         )
         # API returns {"d": [...]} or {"Feeds": [...]}
-        feeds = resp.get("d") or resp.get("Feeds") or []
+        # Bing returns {"d": [...]} where each item has "Url" (not "FeedUrl")
+        raw = resp.get("d") or resp.get("Feeds") or []
+        feeds = raw if isinstance(raw, list) else raw.get("Feeds", [])
         logger.info(f"  GetFeeds: {len(feeds)} feed(s) currently registered")
         for f in feeds:
             logger.info(
-                f"    feed: {f.get('FeedUrl') or f.get('feedUrl')} "
-                f"active={f.get('IsActive') or f.get('isActive')}"
+                f"    feed: {f.get('Url')}  status={f.get('Status')}  "
+                f"urlCount={f.get('UrlCount')}"
             )
 
         sitemap_pattern = re.compile(r"/sitemap\d+/$")
         for f in feeds:
-            feed_url = f.get("FeedUrl") or f.get("feedUrl", "")
+            feed_url = f.get("Url", "")
             if sitemap_pattern.search(feed_url) and feed_url not in this_run:
                 try:
                     _call(

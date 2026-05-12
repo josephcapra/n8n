@@ -242,10 +242,9 @@ def _scrape_redirects(page: Page, redirects_url: str) -> dict[str, str]:
     rows = page.query_selector_all(SEL_TABLE_ROWS)
 
     for row in rows:
-        cells = row.query_selector_all("td")
-        if not cells:
-            continue
-        link = cells[0].query_selector("a")
+        # Django admin: first column is a checkbox td with no link; edit link
+        # lives in the first actual data td — select "td a" to skip the checkbox.
+        link = row.query_selector("td a")
         if not link:
             continue
         source = link.inner_text().strip()

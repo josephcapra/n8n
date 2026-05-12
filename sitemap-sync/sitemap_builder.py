@@ -1,6 +1,7 @@
 """Fetch, parse, shard, and generate sitemap XML files."""
 from __future__ import annotations
 
+import html as _html
 import logging
 import time
 import xml.etree.ElementTree as ET
@@ -131,7 +132,7 @@ def build_shards(urls: list[str]) -> list[tuple[int, str]]:
         for url in chunk:
             lines += [
                 "  <url>",
-                f"    <loc>{url}</loc>",
+                f"    <loc>{_html.escape(url)}</loc>",
                 f"    <lastmod>{today}</lastmod>",
                 "    <changefreq>weekly</changefreq>",
                 "    <priority>0.6</priority>",
