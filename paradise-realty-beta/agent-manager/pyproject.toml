@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Run pytest from inside agent-manager/. pythonpath = ["."] makes the
+# agentmgr / master / worker packages importable without an install step.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

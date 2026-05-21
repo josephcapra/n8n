@@ -1,0 +1,7 @@
+# Local development / test dependencies. Not installed into the deployed image.
+-r requirements.txt
+pytest==8.2.0
+# Mac-only: powers the social-reader pilot (social/instagram_reader.py).
+# Deliberately NOT in requirements.txt so the Cloud Run image stays slim.
+# After install run: python -m playwright install chromium
+playwright>=1.60

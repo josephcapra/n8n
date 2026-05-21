@@ -1,0 +1,57 @@
+{
+  "_comment": "Agent registry. Add a worker by appending an entry and deploying a matching runtime (Cloud Run Job, local daemon, or master-inline). No Master code changes — see registry.py and README 'Extending the registry'.",
+  "agents": [
+    {
+      "name": "echo-worker",
+      "kind": "echo",
+      "job_name": "agentmgr-worker-echo",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "worker.run",
+      "description": "Placeholder worker. Echoes its input payload back as a typed result. Terminal — emits no relay messages.",
+      "capabilities": ["echo", "ping"],
+      "sensitive_default": false
+    },
+    {
+      "name": "transform-worker",
+      "kind": "transform",
+      "job_name": "agentmgr-worker-transform",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "worker.transform",
+      "description": "Phase 2 second worker. Applies a text transform (upper/lower/reverse/count) and can relay its result through the Master to another agent.",
+      "capabilities": ["transform", "text"],
+      "sensitive_default": false
+    },
+    {
+      "name": "assistant",
+      "kind": "assistant",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "Agentic assistant — a Claude tool-use loop that runs terminal commands on the operator's Mac to accomplish a natural-language goal. Read-only commands auto-run; anything else needs the operator's approval.",
+      "capabilities": ["assist", "agentic", "shell", "reasoning"],
+      "sensitive_default": false
+    },
+    {
+      "name": "mac-shell",
+      "kind": "shell",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "Runs shell commands on the operator's Mac via the outbound-only local agent. Every command is SENSITIVE — gated by the session window or per-command approval.",
+      "capabilities": ["shell", "gcloud", "filesystem"],
+      "sensitive_default": true
+    },
+    {
+      "name": "cloudrun-admin",
+      "kind": "cloudrun",
+      "job_name": "",
+      "region": "us-east1",
+      "runtime": "master-inline",
+      "description": "Reads and manages Cloud Run via the Master's scoped service account. Works even when the Mac is offline. Read ops are benign; mutating ops are SENSITIVE.",
+      "capabilities": ["cloudrun", "cloudrun-read", "cloudrun-manage"],
+      "sensitive_default": false
+    }
+  ]
+}

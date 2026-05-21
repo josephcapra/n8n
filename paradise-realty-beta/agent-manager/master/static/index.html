@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Agent-Manager</title>
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AgentMgr" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
+  <link rel="icon" href="/static/icon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <section id="login" class="screen">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" width="64" height="64" />
+      <h1>Agent-Manager</h1>
+      <p class="muted">Private manager chatbot</p>
+    </div>
+    <button id="loginBtn" class="primary big">Sign in with Face ID</button>
+    <p id="loginMsg" class="msg"></p>
+
+    <form id="passwordForm" class="pwlogin">
+      <div class="or">or, on this Mac</div>
+      <input id="passwordInput" type="password" autocomplete="current-password"
+             placeholder="Password" />
+      <button id="passwordLoginBtn" type="submit" class="secondary">Sign in with password</button>
+    </form>
+
+    <details id="setup">
+      <summary>First-time setup on this device</summary>
+      <p class="muted small">
+        Register a passkey once, using the admin token. After that, Face ID is
+        all you need.
+      </p>
+      <input id="adminToken" type="password" placeholder="Admin token (AGENTMGR_API_TOKEN)" />
+      <input id="passkeyLabel" type="text" placeholder="Passkey label (e.g. iPhone)" value="iPhone" />
+      <button id="registerBtn" class="secondary">Register this device's passkey</button>
+      <p id="setupMsg" class="msg"></p>
+    </details>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <section id="app" class="screen hidden">
+    <header>
+      <strong>Agent-Manager</strong>
+      <div class="spacer"></div>
+      <button id="memoryBtn" class="icon" title="What I remember">&#129504;</button>
+      <button id="jobsBtn" class="icon" title="Run a Cloud Run job">&#9654;</button>
+      <button id="sessionsBtn" class="icon" title="Session windows">&#9881;</button>
+      <button id="logoutBtn" class="icon" title="Sign out">&#9211;</button>
+    </header>
+
+    <div id="approvalBanner" class="banner hidden"></div>
+
+    <div id="messages" class="messages"></div>
+
+    <form id="chatForm" class="composer">
+      <input id="chatInput" type="text" autocomplete="off"
+             placeholder="Message the manager…  ($ shell · cloud run …)" />
+      <button type="submit" class="primary">Send</button>
+    </form>
+  </section>
+
+  <!-- ============ SESSIONS SHEET ============ -->
+  <div id="sessionsSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Session windows</strong>
+        <div class="spacer"></div>
+        <button id="closeSessions" class="icon">&times;</button>
+      </header>
+      <p class="muted small">
+        A signed window lets shell commands run without re-approving each one.
+        Catastrophic commands still require Face ID.
+      </p>
+      <div class="row">
+        <select id="sessScope">
+          <option value="shell">shell</option>
+          <option value="cloudrun">cloudrun</option>
+          <option value="all">all</option>
+        </select>
+        <button id="startSession" class="primary">Start (Face ID)</button>
+      </div>
+      <div id="sessionList"></div>
+    </div>
+  </div>
+
+  <!-- ============ CLOUD RUN JOBS SHEET ============ -->
+  <div id="jobsSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Run a Cloud Run job</strong>
+        <div class="spacer"></div>
+        <button id="closeJobs" class="icon">&times;</button>
+      </header>
+      <p class="muted small">
+        Pick one of your Cloud Run jobs and run it now. Needs an active session
+        — you have one after signing in with your password.
+      </p>
+      <div class="row">
+        <select id="jobSelect"><option value="">Loading jobs…</option></select>
+        <button id="runJobBtn" class="primary">Run job</button>
+      </div>
+      <p id="jobsMsg" class="msg"></p>
+    </div>
+  </div>
+
+  <!-- ============ MEMORY SHEET ============ -->
+  <div id="memorySheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>What I remember</strong>
+        <div class="spacer"></div>
+        <button id="closeMemory" class="icon">&times;</button>
+      </header>
+      <p class="muted small">
+        Durable notes I keep across sessions. You can also just say
+        “remember that …”, “what do you remember”, or “forget …” in chat.
+      </p>
+      <form id="memoryForm" class="row">
+        <input id="memoryInput" type="text" autocomplete="off"
+               placeholder="Add something to remember…" />
+        <button id="addMemoryBtn" type="submit" class="primary">Add</button>
+      </form>
+      <p id="memoryMsg" class="msg"></p>
+      <div id="memoryList"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

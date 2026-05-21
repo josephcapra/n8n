@@ -1,0 +1,11 @@
+.venv/
+tests/
+tools/
+deploy/
+*.md
+requirements-dev.txt
+pyproject.toml
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
