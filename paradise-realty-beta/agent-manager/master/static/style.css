@@ -242,3 +242,22 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
 .pill.on { background: rgba(58,210,159,0.18); color: var(--ok); }
 .pill.off { background: rgba(139,149,179,0.18); color: var(--muted); }
+
+/* --- website (jazzysphotos) sheet --- */
+.web-group { border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 12px; margin: 10px 0; background: var(--panel2); }
+.web-group .wg-title { font-size: 13px; font-weight: 600; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; }
+.web-group input, .web-group select { margin: 5px 0; }
+.web-group button { margin-top: 6px; }
+.web-group .row.wrap { flex-wrap: wrap; }
+.web-group .row.wrap button { flex: 1 1 30%; margin-top: 0; }
+.tag { font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 8px; font-weight: 600;
+  background: rgba(255,180,84,0.16); color: var(--warn); }
+button.danger { color: var(--red); border-color: rgba(255,93,93,0.5); }
+button.danger:hover { border-color: var(--red); }
+.web-output { white-space: pre-wrap; word-break: break-word; margin-top: 10px;
+  padding: 11px 12px; border-radius: 11px; background: var(--bg);
+  border: 1px solid var(--line); max-height: 220px; overflow-y: auto;
+  font-size: 13px; line-height: 1.4; }

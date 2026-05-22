@@ -472,6 +472,46 @@ def build_app(config: Config | None = None) -> FastAPI:
         return {"grade": out.get("grade"), "counts": out.get("counts"),
                 "subject": out.get("subject"), "email": out.get("email")}
 
+    # --- jazzysphotos.com site agent ------------------------------------
+    # The Website panel dispatches a task to the local 'jazzysphotos-site'
+    # agent and polls for its result. Publishing actions block in the agent on
+    # the approval gate, so dispatch returns the task id immediately and the UI
+    # polls /website/result (the approval banner handles the Face ID sign-off).
+    @app.post("/website/dispatch", dependencies=[Depends(require_auth)])
+    def website_dispatch(body: dict = Body(...)) -> dict:
+        action = str(body.get("action", "status")).strip()
+        valid = {"status", "build", "refresh_instagram",
+                 "update_copy", "add_photo", "remove_photo", "publish", "goal"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        # Only known fields are forwarded — the agent can't be coerced into
+        # running an arbitrary shell command through this endpoint.
+        allowed = ("field", "value", "image_path", "title", "alt", "category",
+                   "featured", "order", "slug", "message", "goal")
+        payload = {"action": action}
+        for key in allowed:
+            if key in body:
+                payload[key] = body[key]
+        task = TaskSpec(
+            agent="jazzysphotos-site", kind="site", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("website action dispatched", extra={"task_id": task.id, "action": action})
+        return {"task_id": task.id, "action": action}
+
+    @app.get("/website/result/{task_id}", dependencies=[Depends(require_auth)])
+    def website_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "status": result.status,
+            "output": result.output or {},
+            "error": result.error,
+        }
+
     # --- approvals -------------------------------------------------------
     @app.get("/approvals", dependencies=[Depends(require_auth)])
     def list_approvals() -> dict:

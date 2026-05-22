@@ -28,7 +28,11 @@ import time
 
 import uvicorn
 
-from agent.local_agent import process_assistant_task, process_task
+from agent.local_agent import (
+    process_assistant_task,
+    process_security_task,
+    process_task,
+)
 from agentmgr.approval_gate import ApprovalGate
 from agentmgr.config import Config
 from agentmgr.logging_utils import get_logger
@@ -41,11 +45,21 @@ _ADMIN_TOKEN = "local-dev-token"
 
 
 def main() -> int:
+    # Load the consolidated connector credentials (.env) so the assistant's
+    # shell commands inherit every authenticated service. A real env var
+    # already set in the shell wins over the file.
+    from agentmgr.connectors import load_env_file, status as connector_status
+
+    loaded = load_env_file()
+    if loaded:
+        ready = [c["name"] for c in connector_status() if c["configured"]]
+        log.info("loaded connector credentials",
+                 extra={"vars": loaded, "connectors": ready})
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print(
             "WARNING: ANTHROPIC_API_KEY is not set — the assistant cannot "
-            "think without it. Set it and restart:\n"
-            "  export ANTHROPIC_API_KEY=sk-ant-...\n"
+            "think without it. Add it to agent-manager/.env or export it.\n"
         )
 
     cfg = Config(
@@ -76,10 +90,12 @@ def main() -> int:
         log.info("local Mac agent thread started")
         while True:
             try:
-                for agent_name in ("mac-shell", "assistant"):
+                for agent_name in ("mac-shell", "assistant", "security-health"):
                     for task in store.get_pending_tasks(agent_name):
                         if task.kind == "assistant":
                             process_assistant_task(task, store, session_mgr, gate, cfg)
+                        elif task.kind == "security":
+                            process_security_task(task, store, cfg)
                         else:
                             process_task(
                                 task, store, session_mgr, gate,

@@ -81,6 +81,11 @@ class RuleBasedPlanner(Planner):
             op = "list_jobs" if "job" in low else "list_services"
             return PlanStep("cloudrun-admin", "cloudrun", {"op": op}, sensitive)
 
+        if "security" in low and any(w in low for w in ("health", "scan", "audit")):
+            # email the report unless the operator explicitly says not to
+            send = not any(w in low for w in ("don't email", "dont email", "no email"))
+            return PlanStep("security-health", "security", {"send": send}, sensitive)
+
         if low.startswith("transform:"):
             spec = seg.split(":", 1)[1].strip()
             relay_to = None

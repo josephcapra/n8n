@@ -90,7 +90,7 @@ def test_agents_endpoint_lists_all_agents():
     resp = client.get("/agents", headers={"Authorization": f"Bearer {_TOKEN}"})
     assert resp.status_code == 200
     names = {a["name"] for a in resp.json()["agents"]}
-    assert {"echo-worker", "mac-shell", "cloudrun-admin"} <= names
+    assert {"echo-worker", "mac-shell", "cloudrun-admin", "security-health"} <= names
 
 
 # --- desktop password login ----------------------------------------------
@@ -222,6 +222,20 @@ def test_chat_forget(tmp_path):
     forget = client.post("/chat", json={"message": "forget cold calls"}, headers=_AUTH).json()
     assert "forgotten" in forget["reply"].lower()
     assert client.get("/memory", headers=_AUTH).json()["memories"] == []
+
+
+# --- connectors -----------------------------------------------------------
+
+def test_connectors_endpoint_reports_status_without_secrets(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-SECRET")
+    monkeypatch.delenv("BING_API_KEY", raising=False)
+    client = TestClient(build_app(_cfg()))
+    resp = client.get("/connectors", headers=_AUTH)
+    assert resp.status_code == 200
+    by_id = {c["id"]: c for c in resp.json()["connectors"]}
+    assert by_id["openai"]["configured"] is True
+    assert by_id["bing"]["configured"] is False
+    assert "SECRET" not in resp.text          # endpoint never leaks values
 
 
 # --- Phase 1.5: Master -> Mac agent + session endpoints ------------------

@@ -778,6 +778,130 @@ async function submitNewAgent(ev) {
   }
 }
 
+/* ---- website (jazzysphotos) actions ---- */
+let webBusy = false;
+
+function openWebsite() {
+  setMsg("webMsg", "");
+  $("webOutput").textContent = "Pick an action above to begin.";
+  $("websiteSheet").classList.remove("hidden");
+}
+
+// Upload one file via /upload and return its on-disk path (so the Mac agent,
+// which shares this machine, can read it for add_photo).
+async function uploadOneFile(file) {
+  const fd = new FormData();
+  fd.append("files", file);
+  const headers = {};
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch("/upload", { method: "POST", headers, body: fd });
+  if (res.status === 401) { logout(); throw new Error("session expired — sign in again"); }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  const refs = (await res.json()).attachments || [];
+  if (!refs.length) throw new Error("upload returned no file");
+  return refs[0].path;
+}
+
+function renderWebResult(r) {
+  const o = r.output || {};
+  if (r.status === "FAILED") return "✗ " + (r.error || "failed");
+  const parts = [];
+  if (o.answer) parts.push(o.answer);            // agentic goal
+  if (o.note) parts.push(o.note);                // publish/build summaries
+  if (o.published) parts.push("Published ✓");
+  // shell-style output (status / build / refresh)
+  if (o.stdout && !o.answer) parts.push(o.stdout.trim());
+  if (o.stderr && o.exit_code !== 0) parts.push(o.stderr.trim());
+  if (o.hit_limit) parts.push("(stopped at the step limit — ask again to continue.)");
+  return "✓ " + (parts.join("\n\n").trim() || "Done.");
+}
+
+// Dispatch a website action, then poll for its result. Publishing actions block
+// in the agent on the approval gate, so the approval banner may pop up — approve
+// it with Face ID and this keeps polling until the action finishes.
+async function runWebAction(payload, label) {
+  if (webBusy) return;
+  webBusy = true;
+  setMsg("webMsg", "");
+  const out = $("webOutput");
+  out.classList.add("muted");
+  out.textContent = "⏳ " + (label || "Working") + "… (approve in the banner if asked)";
+  try {
+    const { task_id } = await api("POST", "/website/dispatch", { body: payload });
+    const started = Date.now();
+    while (Date.now() - started < 15 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const r = await api("GET", "/website/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        out.classList.toggle("muted", false);
+        out.textContent = renderWebResult(r);
+        addBubble("sys", "Website · " + (label || payload.action) + " — " +
+          (r.status === "FAILED" ? "failed" : "done") + ".");
+        return;
+      }
+    }
+    out.textContent = "Still running — check back from the chat. (Is the Mac agent up?)";
+  } catch (e) {
+    out.classList.toggle("muted", false);
+    out.textContent = "✗ " + e.message;
+  } finally {
+    webBusy = false;
+  }
+}
+
+async function webAddPhoto() {
+  const file = $("webPhotoFile").files[0];
+  const title = $("webPhotoTitle").value.trim();
+  const alt = $("webPhotoAlt").value.trim();
+  if (!file) return setMsg("webMsg", "Choose an image first.", true);
+  if (!title || !alt) return setMsg("webMsg", "Title and alt text are required.", true);
+  setMsg("webMsg", "Uploading image…");
+  let image_path;
+  try { image_path = await uploadOneFile(file); }
+  catch (e) { return setMsg("webMsg", "Upload failed: " + e.message, true); }
+  setMsg("webMsg", "");
+  runWebAction({
+    action: "add_photo", image_path, title, alt,
+    category: $("webPhotoCat").value,
+    featured: $("webPhotoFeatured").checked,
+    order: Number($("webPhotoOrder").value) || 99,
+  }, "Add photo");
+}
+
+function wireWebsite() {
+  $("websiteBtn").onclick = openWebsite;
+  $("closeWebsite").onclick = () => $("websiteSheet").classList.add("hidden");
+  document.querySelectorAll("[data-web]").forEach((btn) => {
+    btn.onclick = () => runWebAction({ action: btn.dataset.web }, btn.textContent);
+  });
+  $("webUpdateCopy").onclick = () => {
+    const value = $("webCopyValue").value.trim();
+    if (!value) return setMsg("webMsg", "Type the new text first.", true);
+    setMsg("webMsg", "");
+    runWebAction({ action: "update_copy", field: $("webCopyField").value, value },
+      "Update " + $("webCopyField").value);
+  };
+  $("webAddPhoto").onclick = webAddPhoto;
+  $("webRemovePhoto").onclick = () => {
+    const slug = $("webRemoveSlug").value.trim();
+    if (!slug) return setMsg("webMsg", "Enter the photo slug first.", true);
+    setMsg("webMsg", "");
+    runWebAction({ action: "remove_photo", slug }, "Remove photo");
+  };
+  $("webPublish").onclick = () =>
+    runWebAction({ action: "publish", message: $("webPublishMsg").value.trim() }, "Publish");
+  $("webGoalBtn").onclick = () => {
+    const goal = $("webGoal").value.trim();
+    if (!goal) return setMsg("webMsg", "Describe the change first.", true);
+    setMsg("webMsg", "");
+    runWebAction({ action: "goal", goal }, "Site change");
+  };
+}
+
 /* ---- misc ---- */
 function setMsg(id, text, isErr, isOk) {
   const el = $(id);
@@ -834,6 +958,7 @@ function init() {
   };
   $("closeMemory").onclick = () => $("memorySheet").classList.add("hidden");
   $("memoryForm").onsubmit = addMemory;
+  wireWebsite();
 
   if (!window.PublicKeyCredential) {
     setMsg("loginMsg", "This browser has no passkey support.", true);

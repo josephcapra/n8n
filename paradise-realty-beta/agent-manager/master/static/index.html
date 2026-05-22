@@ -109,6 +109,7 @@
         </div>
 
         <div class="pane-head">ACTIONS</div>
+        <button id="websiteBtn" class="rail-btn">&#127760; Website &mdash; jazzysphotos</button>
         <button id="claudeBtn" class="rail-btn">&#129302; Claude console</button>
         <button id="jobsBtn" class="rail-btn">&#9654; Run a job</button>
         <button id="uploadBtn" class="rail-btn">&#128206; Upload a file</button>
@@ -180,6 +181,92 @@
       </form>
       <p id="memoryMsg" class="msg"></p>
       <div id="memoryList"></div>
+    </div>
+  </div>
+
+  <!-- ============ WEBSITE (jazzysphotos) SHEET ============ -->
+  <div id="websiteSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>&#127760; jazzysphotos.com &mdash; site updates</strong>
+        <div class="spacer"></div>
+        <a href="https://jazzysphotos.com" target="_blank" class="small muted" style="text-decoration:none">View site &#8599;</a>
+        <button id="closeWebsite" class="icon">&times;</button>
+      </header>
+      <p class="muted small">
+        Runs on this Mac against the live site's repo. <strong>Check &amp; build</strong>
+        actions run right away. Anything tagged <span class="tag">publishes</span>
+        commits + pushes to the live site &mdash; it asks for your approval first,
+        then deploys (live in ~90s).
+      </p>
+
+      <div class="web-group">
+        <div class="wg-title">Check &amp; validate</div>
+        <div class="row wrap">
+          <button class="secondary" data-web="status">Status</button>
+          <button class="secondary" data-web="build">Validate build</button>
+          <button class="secondary" data-web="refresh_instagram">Refresh Instagram</button>
+        </div>
+      </div>
+
+      <div class="web-group">
+        <div class="wg-title">Update copy <span class="tag">publishes</span></div>
+        <div class="row">
+          <select id="webCopyField">
+            <option value="tagline">tagline</option>
+            <option value="heroHeading">heroHeading</option>
+            <option value="heroSubtext">heroSubtext</option>
+            <option value="intro">intro</option>
+            <option value="aboutHeading">aboutHeading</option>
+            <option value="titleSuffix">titleSuffix</option>
+            <option value="email">email</option>
+            <option value="instagramHandle">instagramHandle</option>
+            <option value="instagramUrl">instagramUrl</option>
+            <option value="location">location</option>
+            <option value="bookingUrl">bookingUrl</option>
+            <option value="brand">brand</option>
+            <option value="name">name</option>
+          </select>
+        </div>
+        <input id="webCopyValue" type="text" placeholder="New text for this field…" />
+        <button id="webUpdateCopy" class="primary">Update &amp; publish</button>
+      </div>
+
+      <div class="web-group">
+        <div class="wg-title">Add a photo <span class="tag">publishes</span></div>
+        <input id="webPhotoFile" type="file" accept="image/jpeg,image/png" />
+        <input id="webPhotoTitle" type="text" placeholder="Title (e.g. Golden Hour on the Coast)" />
+        <input id="webPhotoAlt" type="text" placeholder="Alt text — describe the photo (required)" />
+        <div class="row">
+          <select id="webPhotoCat">
+            <option>Seniors</option><option>Prom</option><option>Couples</option>
+            <option>Portraits</option><option>Other</option>
+          </select>
+          <input id="webPhotoOrder" type="number" value="99" min="0" title="Order (lower shows first)" />
+        </div>
+        <label class="check"><input id="webPhotoFeatured" type="checkbox" /> Feature on the Home page</label>
+        <button id="webAddPhoto" class="primary">Add &amp; publish</button>
+      </div>
+
+      <div class="web-group">
+        <div class="wg-title">Remove a photo <span class="tag">publishes</span></div>
+        <input id="webRemoveSlug" type="text" placeholder="photo slug (e.g. red-gown-under-the-oaks)" />
+        <button id="webRemovePhoto" class="secondary danger">Remove &amp; publish</button>
+      </div>
+
+      <div class="web-group">
+        <div class="wg-title">Publish pending changes <span class="tag">publishes</span></div>
+        <input id="webPublishMsg" type="text" placeholder="Commit message (optional)" />
+        <button id="webPublish" class="primary">Publish to live</button>
+      </div>
+
+      <div class="web-group">
+        <div class="wg-title">Ask for any change</div>
+        <input id="webGoal" type="text" placeholder="e.g. change the Couple Shoot rate to $150/hr" />
+        <button id="webGoalBtn" class="secondary">Run it</button>
+      </div>
+
+      <p id="webMsg" class="msg"></p>
+      <div id="webOutput" class="web-output muted small">Pick an action above to begin.</div>
     </div>
   </div>
 

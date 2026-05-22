@@ -4,3 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+# Secrets — never commit. The consolidated connector credentials live here.
+.env
+.env.*
+!.env.example

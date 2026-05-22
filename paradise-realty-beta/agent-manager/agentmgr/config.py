@@ -52,6 +52,12 @@ class Config:
     local_agent_name: str = "mac-shell"     # registry name of the Mac agent
     local_agent_poll_s: float = 2.0         # how often the Mac agent polls
     shell_command_timeout_s: float = 300.0  # per-command hard timeout
+    # Office-Lead CRM agent: dir holding the Node scripts (office-leads/*).
+    crm_project_dir: str = "/Users/User/paradise-crm-audit"
+    crm_task_timeout_s: float = 1200.0      # CRM pulls/cleanups can run minutes
+    # jazzysphotos-site agent: the local Astro git repo it edits + publishes.
+    jazzysphotos_dir: str = "/Users/User/jazzysphotos"
+    jazzysphotos_timeout_s: float = 600.0   # npm build + git push can run minutes
     # Catastrophic commands that ALWAYS need fresh approval, even mid-session.
     always_confirm_patterns: tuple[str, ...] = (
         "rm -rf /", "rm -rf ~", "rm -rf *", "mkfs", "dd if=", "diskutil erase",
@@ -127,6 +133,10 @@ def load_config() -> Config:
         local_agent_name=_env("AGENTMGR_LOCAL_AGENT_NAME", "mac-shell"),
         local_agent_poll_s=float(_env("AGENTMGR_LOCAL_AGENT_POLL_S", "2")),
         shell_command_timeout_s=float(_env("AGENTMGR_SHELL_TIMEOUT_S", "300")),
+        crm_project_dir=_env("AGENTMGR_CRM_DIR", "/Users/User/paradise-crm-audit"),
+        crm_task_timeout_s=float(_env("AGENTMGR_CRM_TIMEOUT_S", "1200")),
+        jazzysphotos_dir=_env("AGENTMGR_JAZZY_DIR", "/Users/User/jazzysphotos"),
+        jazzysphotos_timeout_s=float(_env("AGENTMGR_JAZZY_TIMEOUT_S", "600")),
         always_confirm_patterns=tuple(
             p.strip()
             for p in (_env("AGENTMGR_ALWAYS_CONFIRM") or "").split(",")
