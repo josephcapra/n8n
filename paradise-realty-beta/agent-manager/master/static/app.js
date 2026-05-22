@@ -630,6 +630,10 @@ function renderAgents(data) {
     grp.textContent = a.group;
     top.append(dot, name, grp);
 
+    const desc = document.createElement("div");
+    desc.className = "ac-desc";
+    desc.textContent = a.description || "";
+
     const meta = document.createElement("div");
     meta.className = "ac-meta";
     const caps = (a.capabilities || []).slice(0, 3).join(", ");
@@ -640,7 +644,9 @@ function renderAgents(data) {
     act.textContent = agentActionLabel(a);
     act.onclick = () => agentAction(a);
 
-    card.append(top, meta, act);
+    card.append(top);
+    if (a.description) card.append(desc);
+    card.append(meta, act);
     list.appendChild(card);
   });
   renderStats(agents);
