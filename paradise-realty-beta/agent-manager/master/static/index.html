@@ -52,6 +52,7 @@
       <strong>Command Center</strong>
       <span id="masterStatus" class="master-status"></span>
       <div class="spacer"></div>
+      <button id="terminalToggle" class="icon" title="Terminal">&#9000;</button>
       <button id="rosterToggle" class="icon only-mobile" title="Agents">&#128101;</button>
       <button id="logoutBtn" class="icon" title="Sign out">&#9211;</button>
     </header>
@@ -67,22 +68,44 @@
         <button id="newAgentBtn" class="rail-btn accent">&#43; New agent</button>
       </aside>
 
-      <!-- CENTER: console -->
+      <!-- CENTER: console — split horizontally into chat (left) + terminal (right) -->
       <main class="pane console">
-        <div id="approvalBanner" class="banner hidden"></div>
-        <div id="messages" class="messages"></div>
-        <div id="dropZone" class="dropzone hidden"><div>Drop files to attach</div></div>
-        <form id="chatForm" class="composer">
-          <div id="attachTray" class="attach-tray hidden"></div>
-          <div class="composer-row">
-            <input id="fileInput" type="file" multiple class="hidden"
-                   accept="image/*,.pdf,.txt,.csv,.json,.md,.log,.html,.xml,.py,.js,.ts,.yaml,.yml,.docx,.xlsx" />
-            <button type="button" id="attachBtn" class="icon" title="Attach files or screenshots">&#128206;</button>
-            <input id="chatInput" type="text" autocomplete="off"
-                   placeholder="Message the manager…  ($ shell · cloud run …)" />
-            <button type="submit" class="primary">Send</button>
+        <!-- LEFT: chat -->
+        <div class="chat-col">
+          <div id="approvalBanner" class="banner hidden"></div>
+          <div id="messages" class="messages"></div>
+          <div id="dropZone" class="dropzone hidden"><div>Drop files to attach</div></div>
+          <form id="chatForm" class="composer">
+            <div id="attachTray" class="attach-tray hidden"></div>
+            <div class="composer-row">
+              <select id="modelSelect" class="model-select" title="Model"></select>
+              <input id="fileInput" type="file" multiple class="hidden"
+                     accept="image/*,.pdf,.txt,.csv,.json,.md,.log,.html,.xml,.py,.js,.ts,.yaml,.yml,.docx,.xlsx" />
+              <button type="button" id="attachBtn" class="icon" title="Attach files or screenshots">&#128206;</button>
+              <input id="chatInput" type="text" autocomplete="off"
+                     placeholder="Message the manager…  ($ shell · cloud run …)" />
+              <button type="submit" class="primary">Send</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- RIGHT: in-app terminal (side-by-side split), runs via mac-shell -->
+        <section id="terminalPane" class="terminal hidden">
+          <div class="term-head">
+            <span class="term-title">&#9000; Terminal</span>
+            <span class="term-sub muted small">mac-shell &middot; gated by session/approval</span>
+            <div class="spacer"></div>
+            <button id="termClear" class="icon mini" title="Clear">&#9003;</button>
+            <button id="termClose" class="icon mini" title="Close">&times;</button>
           </div>
-        </form>
+          <div id="termOutput" class="term-output"></div>
+          <form id="termForm" class="term-input-row">
+            <span class="term-prompt">$</span>
+            <input id="termInput" type="text" autocomplete="off" autocapitalize="off"
+                   autocorrect="off" spellcheck="false"
+                   placeholder="Type a command, press Enter (e.g. ls ~/paradise-crm-audit)" />
+          </form>
+        </section>
       </main>
 
       <!-- RIGHT: system lights + actions + status -->
@@ -310,6 +333,17 @@
       </header>
       <p id="secSummary" class="muted small">Scanning…</p>
       <div id="secFindings"></div>
+    </div>
+  </div>
+
+  <!-- ============ AGENT INFO SHEET ============ -->
+  <div id="agentInfoSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong id="aiName">Agent</strong>
+        <div class="spacer"></div>
+        <button id="closeAgentInfo" class="icon">&times;</button>
+      </header>
+      <div id="aiBody"></div>
     </div>
   </div>
 

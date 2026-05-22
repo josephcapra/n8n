@@ -1,5 +1,5 @@
 /* Minimal service worker — caches the PWA shell, never caches API calls. */
-const CACHE = "agentmgr-v10";
+const CACHE = "agentmgr-v11";
 const SHELL = [
   "/",
   "/static/app.js",
@@ -9,7 +9,7 @@ const SHELL = [
 ];
 const API_PREFIXES = [
   "/chat", "/upload", "/passkey", "/password", "/approvals", "/sessions",
-  "/agents", "/cloudrun", "/memory", "/health", "/security", "/reports",
+  "/agents", "/cloudrun", "/memory", "/health", "/security", "/reports", "/models",
 ];
 
 self.addEventListener("install", (e) => {

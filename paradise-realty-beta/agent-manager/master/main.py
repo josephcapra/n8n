@@ -307,6 +307,29 @@ def build_app(config: Config | None = None) -> FastAPI:
         log.info("created agent", extra={"name": spec.name, "runtime": spec.runtime})
         return {"created": entry, "count": len(app.state.registry.all())}
 
+    @app.get("/models", dependencies=[Depends(require_auth)])
+    def models() -> dict:
+        """Chat models the selector can offer, based on configured providers.
+        'auto' = cost-aware Claude tiering (the default)."""
+        out = [{"id": "auto", "label": "Auto · Claude (cost-aware)", "provider": "auto"}]
+        if cfg.anthropic_api_key:
+            out += [
+                {"id": "claude-opus-4-7", "label": "Claude Opus 4.7", "provider": "anthropic"},
+                {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "provider": "anthropic"},
+                {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5", "provider": "anthropic"},
+            ]
+        if cfg.openai_api_key:
+            out += [
+                {"id": "gpt-4o", "label": "OpenAI GPT-4o", "provider": "openai"},
+                {"id": "gpt-4o-mini", "label": "OpenAI GPT-4o mini", "provider": "openai"},
+            ]
+        if cfg.google_api_key:
+            out += [
+                {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "provider": "google"},
+                {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "provider": "google"},
+            ]
+        return {"models": out}
+
     @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_auth)])
     def chat(req: ChatRequest) -> ChatResponse:
         return run_command(app, req)
@@ -513,6 +536,34 @@ def build_app(config: Config | None = None) -> FastAPI:
             "error": result.error,
         }
 
+    # --- terminal --------------------------------------------------------
+    # The in-app terminal dispatches a shell command to the local 'mac-shell'
+    # agent and polls for its result. The command is SENSITIVE: the Mac daemon
+    # gates it behind an open session window or a per-command Face ID approval
+    # (the approval banner handles the sign-off), so dispatch returns the task
+    # id immediately and the terminal polls /terminal/result.
+    @app.post("/terminal/exec", dependencies=[Depends(require_auth)])
+    def terminal_exec(body: dict = Body(...)) -> dict:
+        command = str(body.get("command", "")).strip()
+        if not command:
+            raise HTTPException(status_code=422, detail="empty command")
+        task = TaskSpec(
+            agent=cfg.local_agent_name, kind="shell",
+            payload={"command": command, "cwd": body.get("cwd") or None},
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("terminal command dispatched", extra={"task_id": task.id})
+        return {"task_id": task.id}
+
+    @app.get("/terminal/result/{task_id}", dependencies=[Depends(require_auth)])
+    def terminal_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {"ready": True, "status": result.status,
+                "output": result.output or {}, "error": result.error}
+
     # --- approvals -------------------------------------------------------
     @app.get("/approvals", dependencies=[Depends(require_auth)])
     def list_approvals() -> dict:
@@ -655,6 +706,36 @@ def _handle_memory_intent(message: str, memory: MemoryStore) -> str | None:
 
 # --- command execution: the planner + the message hub -------------------
 
+_HISTORY_MAX_TURNS = 16        # most-recent turns fed back to the assistant
+_HISTORY_MAX_CHARS_PER_TURN = 1500
+
+
+def _recent_history_block(turns: list, max_turns: int = _HISTORY_MAX_TURNS) -> str:
+    """Format the recent conversation (excluding the just-appended current
+    message) as a context block so the assistant remembers what we were doing.
+    Returns "" when there's nothing prior — i.e. the first turn of a chat."""
+    prior = list(turns)[:-1]            # drop the current user message (last)
+    prior = prior[-max_turns:]
+    lines = []
+    for t in prior:
+        text = (getattr(t, "text", "") or "").strip()
+        if not text:
+            continue
+        if len(text) > _HISTORY_MAX_CHARS_PER_TURN:
+            text = text[:_HISTORY_MAX_CHARS_PER_TURN] + " …"
+        who = "Operator" if getattr(t, "role", "") == "user" else "You (the manager)"
+        lines.append(f"{who}: {text}")
+    if not lines:
+        return ""
+    return (
+        "## Conversation so far (oldest first)\n"
+        "This is the current chat with the operator. Use it to resolve "
+        "references like \"that\", \"it\", \"the one we just discussed\", and to "
+        "stay on the thread of what you were working on together:\n"
+        + "\n".join(lines)
+    )
+
+
 def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
     cfg: Config = app.state.config
     store: StateStore = app.state.store
@@ -682,9 +763,12 @@ def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
     log.info("planned", extra={"plan": plan.summary})
 
     # Give the assistant its persistent memory + connector awareness so it
-    # "remembers" the operator and knows which services it can reach.
+    # "remembers" the operator and knows which services it can reach, plus the
+    # recent back-and-forth of THIS conversation so follow-ups like "how do I do
+    # that" / "fix it" resolve against what was just said.
     mem_block = app.state.memory.prompt_block(cfg.memory_inject_limit)
     conn_block = connectors_registry.prompt_block()
+    history_block = _recent_history_block(store.get_conversation(conversation_id))
     attachments_payload = [a.model_dump() for a in req.attachments]
     for step in plan.steps:
         if step.agent == "assistant":
@@ -692,8 +776,12 @@ def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
                 step.payload.setdefault("memory", mem_block)
             if conn_block:
                 step.payload.setdefault("connectors", conn_block)
+            if history_block:
+                step.payload.setdefault("history", history_block)
             if attachments_payload:
                 step.payload["attachments"] = attachments_payload
+            if req.model:
+                step.payload["model"] = req.model
 
     execution = _Execution(app, correlation_id, conversation_id)
     execution.run_plan(plan)

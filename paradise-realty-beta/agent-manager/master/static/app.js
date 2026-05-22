@@ -3,10 +3,13 @@
 
 const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem("agentmgr_token") || "";
-let conversationId = null;
+let conversationId = localStorage.getItem("agentmgr_conversation") || null;
 let approvalsTimer = null;
 let agentsTimer = null;
 let lastCost = null;
+let selectedModel = localStorage.getItem("agentmgr_model") || "auto";
+const runningAgents = new Set();   // agent names with in-flight work (progress bar)
+let agentsByName = {};             // last /agents payload, keyed by name (info modal)
 
 /* ---- base64url <-> ArrayBuffer ---- */
 function b64uToBuf(s) {
@@ -102,6 +105,7 @@ function showApp() {
   addBubble("sys", "Command center online. Message the manager, or pick an agent on the left.");
   refreshApprovals();
   approvalsTimer = setInterval(refreshApprovals, 6000);
+  loadModels();
   loadStats().then(loadAgents);
   loadSecurity();
   loadReports();
@@ -318,9 +322,10 @@ async function sendMessage(ev) {
 
   try {
     const res = await api("POST", "/chat", {
-      body: { message: text, conversation_id: conversationId, attachments: refs },
+      body: { message: text, conversation_id: conversationId, attachments: refs, model: selectedModel },
     });
     conversationId = res.conversation_id;
+    if (conversationId) localStorage.setItem("agentmgr_conversation", conversationId);
     addBubble("master", res.reply);
   } catch (e) {
     addBubble("sys", "Error: " + e.message);
@@ -572,6 +577,22 @@ async function loadStats() {
   try { lastCost = await api("GET", "/cost"); } catch (e) {}
 }
 
+async function loadModels() {
+  const sel = $("modelSelect");
+  if (!sel) return;
+  let models;
+  try { models = (await api("GET", "/models")).models || []; } catch (e) { return; }
+  sel.innerHTML = models
+    .map((m) => `<option value="${m.id}">${m.label}</option>`)
+    .join("");
+  if (models.some((m) => m.id === selectedModel)) sel.value = selectedModel;
+  else { selectedModel = "auto"; sel.value = "auto"; }
+  sel.onchange = () => {
+    selectedModel = sel.value;
+    localStorage.setItem("agentmgr_model", selectedModel);
+  };
+}
+
 let lastSecurity = null;
 function secLabel(s) {
   return s.light === "unknown" ? "couldn’t check"
@@ -718,7 +739,7 @@ function agentActionLabel(a) {
   return "💬 Message";
 }
 function agentAction(a) {
-  if (a.group === "cloud") return runJobByName(a.job_name || a.name);
+  if (a.group === "cloud") return runJobByName(a.job_name || a.name, a.name);
   if (a.name === "mac-shell") return focusChat("$ ");
   if (a.name === "cloudrun-admin") return quickSend("cloud run, list jobs");
   if (a.name === "security-health") return quickSend("run a security health check");
@@ -727,12 +748,16 @@ function agentAction(a) {
 
 function renderAgents(data) {
   const agents = data.agents || [];
+  agentsByName = {};
+  agents.forEach((a) => (agentsByName[a.name] = a));
   $("agentCount").textContent = agents.length;
   const list = $("agentList");
   list.innerHTML = "";
   agents.forEach((a) => {
     const card = document.createElement("div");
     card.className = "agent-card";
+    card.dataset.agent = a.name;
+    if (runningAgents.has(a.name)) card.classList.add("running");
 
     const top = document.createElement("div");
     top.className = "ac-top";
@@ -745,7 +770,13 @@ function renderAgents(data) {
     const grp = document.createElement("span");
     grp.className = "grp";
     grp.textContent = a.group;
-    top.append(dot, name, grp);
+    // ⓘ info button — opens the full description
+    const info = document.createElement("button");
+    info.className = "ac-info";
+    info.title = "What this agent does";
+    info.innerHTML = "&#9432;";
+    info.onclick = (e) => { e.stopPropagation(); openAgentInfo(a); };
+    top.append(dot, name, grp, info);
 
     const desc = document.createElement("div");
     desc.className = "ac-desc";
@@ -756,6 +787,11 @@ function renderAgents(data) {
     const caps = (a.capabilities || []).slice(0, 3).join(", ");
     meta.textContent = a.status + " · " + a.runtime + (caps ? " · " + caps : "");
 
+    // progress bar — visible only while this agent has in-flight work
+    const prog = document.createElement("div");
+    prog.className = "ac-progress";
+    prog.innerHTML = '<div class="ac-progress-bar"></div>';
+
     const act = document.createElement("button");
     act.className = "ac-act";
     act.textContent = agentActionLabel(a);
@@ -763,10 +799,104 @@ function renderAgents(data) {
 
     card.append(top);
     if (a.description) card.append(desc);
-    card.append(meta, act);
+    card.append(meta, prog, act);
     list.appendChild(card);
   });
   renderStats(agents);
+}
+
+/* ---- progress bar: mark an agent busy while it has in-flight work ---- */
+function setAgentRunning(name, on) {
+  if (!name) return;
+  if (on) runningAgents.add(name); else runningAgents.delete(name);
+  const list = $("agentList");
+  if (!list) return;
+  const card = [...list.querySelectorAll(".agent-card")]
+    .find((c) => c.dataset.agent === name);
+  if (card) card.classList.toggle("running", on);
+}
+
+/* ---- agent info modal: full description + details ---- */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function openAgentInfo(a) {
+  $("aiName").textContent = a.name;
+  const rows = [
+    ["Status", a.status],
+    ["Runtime", a.runtime],
+    ["Kind", a.kind || "—"],
+    ["Group", a.group],
+    ["Capabilities", (a.capabilities || []).join(", ") || "—"],
+    ["Sensitive", a.sensitive_default ? "yes — needs your approval to run" : "no"],
+  ];
+  if (a.job_name) rows.push(["Cloud job", a.job_name]);
+  $("aiBody").innerHTML =
+    '<p class="ai-desc">' + escapeHtml(a.description || "No description provided.") + "</p>" +
+    '<div class="ai-rows">' +
+    rows.map(([k, v]) =>
+      '<div class="ai-row"><span class="ai-k">' + k + '</span><span class="ai-v">' +
+      escapeHtml(String(v)) + "</span></div>").join("") +
+    "</div>";
+  $("agentInfoSheet").classList.remove("hidden");
+}
+
+/* ---- in-app terminal (runs via the mac-shell local agent) ---- */
+let termBusy = false;
+function toggleTerminal(force) {
+  const consolePane = document.querySelector(".pane.console");
+  const pane = $("terminalPane");
+  const open = force !== undefined ? force : pane.classList.contains("hidden");
+  pane.classList.toggle("hidden", !open);
+  consolePane.classList.toggle("term-open", open);
+  $("terminalToggle").classList.toggle("active", open);
+  if (open) setTimeout(() => $("termInput").focus(), 50);
+}
+function termWrite(text, cls) {
+  const line = document.createElement("div");
+  line.className = "term-line" + (cls ? " " + cls : "");
+  line.textContent = text;
+  $("termOutput").appendChild(line);
+  $("termOutput").scrollTop = $("termOutput").scrollHeight;
+}
+async function termRun(ev) {
+  if (ev) ev.preventDefault();
+  if (termBusy) return;
+  const command = $("termInput").value.trim();
+  if (!command) return;
+  $("termInput").value = "";
+  termWrite("$ " + command, "term-cmd");
+  termBusy = true;
+  setAgentRunning("mac-shell", true);
+  const pending = document.createElement("div");
+  pending.className = "term-line muted";
+  pending.textContent = "⏳ running… (approve in the banner if asked)";
+  $("termOutput").appendChild(pending);
+  try {
+    const { task_id } = await api("POST", "/terminal/exec", { body: { command } });
+    const started = Date.now();
+    while (Date.now() - started < 10 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const r = await api("GET", "/terminal/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        pending.remove();
+        const o = r.output || {};
+        if (o.stdout) termWrite(o.stdout.replace(/\s+$/, ""));
+        if (o.stderr) termWrite(o.stderr.replace(/\s+$/, ""), "term-err");
+        if (!o.stdout && !o.stderr && r.status !== "FAILED") termWrite("(no output)", "muted");
+        if (r.status === "FAILED") termWrite("✗ " + (r.error || "failed"), "term-err");
+        return;
+      }
+    }
+    pending.textContent = "still running… (is the Mac agent up?)";
+  } catch (e) {
+    pending.remove();
+    termWrite("✗ " + e.message, "term-err");
+  } finally {
+    termBusy = false;
+    setAgentRunning("mac-shell", false);
+  }
 }
 
 function renderStats(agents) {
@@ -806,14 +936,19 @@ function quickSend(text) {
   $("chatInput").value = text;
   sendMessage({ preventDefault() {} });
 }
-async function runJobByName(name) {
+async function runJobByName(name, agentName) {
   if (!name) return;
   addBubble("sys", "Starting job “" + name + "”…");
+  if (agentName) setAgentRunning(agentName, true);
   try {
     await api("POST", "/cloudrun/jobs/" + encodeURIComponent(name) + "/run");
     addBubble("sys", "Started “" + name + "”.");
+    // The job runs in the cloud (completion isn't polled here) — show the bar
+    // briefly as launch feedback.
+    if (agentName) setTimeout(() => setAgentRunning(agentName, false), 6000);
   } catch (e) {
     addBubble("sys", "Couldn’t run “" + name + "”: " + e.message);
+    if (agentName) setAgentRunning(agentName, false);
   }
 }
 
@@ -896,6 +1031,7 @@ function renderWebResult(r) {
 async function runWebAction(payload, label) {
   if (webBusy) return;
   webBusy = true;
+  setAgentRunning("jazzysphotos-site", true);
   setMsg("webMsg", "");
   const out = $("webOutput");
   out.classList.add("muted");
@@ -920,6 +1056,7 @@ async function runWebAction(payload, label) {
     out.textContent = "✗ " + e.message;
   } finally {
     webBusy = false;
+    setAgentRunning("jazzysphotos-site", false);
   }
 }
 
@@ -1032,6 +1169,16 @@ function init() {
   $("closeMemory").onclick = () => $("memorySheet").classList.add("hidden");
   $("memoryForm").onsubmit = addMemory;
   wireWebsite();
+
+  // in-app terminal
+  $("terminalToggle").onclick = () => toggleTerminal();
+  $("termClose").onclick = () => toggleTerminal(false);
+  $("termClear").onclick = () => { $("termOutput").innerHTML = ""; };
+  $("termForm").onsubmit = termRun;
+  // default to the side-by-side split on desktop; collapsed on narrow screens
+  if (window.matchMedia("(min-width: 861px)").matches) toggleTerminal(true);
+  // agent info modal
+  $("closeAgentInfo").onclick = () => $("agentInfoSheet").classList.add("hidden");
 
   if (!window.PublicKeyCredential) {
     setMsg("loginMsg", "This browser has no passkey support.", true);

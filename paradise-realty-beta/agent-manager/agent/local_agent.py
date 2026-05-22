@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -33,12 +34,18 @@ WORKER_NAME = "mac-shell"
 _MAX_CAPTURE = 20_000  # trim very large stdout/stderr
 
 
+# Run through the operator's LOGIN shell so commands see the same PATH and
+# environment as their real terminal (e.g. ~/.local/bin/claude, Homebrew).
+# A bare `shell=True` uses /bin/sh -c, which skips the profile and only sees the
+# daemon's minimal PATH — so user-installed tools come back "command not found".
+_LOGIN_SHELL = os.environ.get("SHELL") or "/bin/zsh"
+
+
 def _run_command(command: str, cwd: str | None, timeout_s: float) -> dict:
     """Execute one shell command, capturing output. Never raises."""
     try:
         proc = subprocess.run(
-            command,
-            shell=True,
+            [_LOGIN_SHELL, "-lc", command],
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -205,7 +212,9 @@ def process_assistant_task(
     driver=None,
 ) -> None:
     """Run an agentic-assistant goal — a Claude tool-use loop over the Mac shell."""
-    from agentmgr.assistant import make_driver, run_agentic_loop, system_prompt
+    from agentmgr.assistant import (
+        classify_query, make_driver, run_agentic_loop, select_model, system_prompt,
+    )
 
     set_correlation_id(task.correlation_id)
     store.update_task_status(task.id, TaskStatus.RUNNING)
@@ -218,15 +227,47 @@ def process_assistant_task(
 
     memory = str(task.payload.get("memory", "") or "")
     connectors = str(task.payload.get("connectors", "") or "")
+    history = str(task.payload.get("history", "") or "")
     attachments = task.payload.get("attachments") or []
+    chosen = (task.payload.get("model") or "").strip()
+    explicit_model = chosen if chosen and chosen != "auto" else ""
     log.info("assistant goal started",
-             extra={"task_id": task.id, "goal": goal, "attachments": len(attachments)})
+             extra={"task_id": task.id, "goal": goal, "attachments": len(attachments),
+                    "model": explicit_model or "auto"})
     runner = _assistant_shell_runner(session_mgr, gate, cfg)
+    sys_prompt = system_prompt(memory, connectors, history)
+
+    # Cheap fast-path: trivial conversational / recall queries that need no Mac
+    # tools are answered by a low-cost one-shot model (e.g. Gemini Flash) instead
+    # of the Claude agentic loop — keeps everyday chatter off the Anthropic bill.
+    if (not explicit_model and classify_query(goal) == "chat" and not attachments
+            and cfg.google_api_key and cfg.google_model):
+        try:
+            from agentmgr.llm import GoogleProvider, LLMRequest
+            resp = GoogleProvider(cfg).complete(
+                LLMRequest(prompt=goal, system=sys_prompt, max_tokens=1024))
+            if resp.text.strip():
+                store.record_llm_cost(task.correlation_id, resp.cost_usd)
+                store.put_task_result(TaskResult(
+                    task_id=task.id, status=TaskStatus.COMPLETED,
+                    output={"answer": resp.text.strip(), "transcript": [],
+                            "steps": 0, "model": resp.model, "provider": resp.provider},
+                    worker="assistant"))
+                log.info("assistant chat fast-path",
+                         extra={"task_id": task.id, "model": resp.model,
+                                "cost_usd": round(resp.cost_usd, 6)})
+                return
+        except Exception:  # noqa: BLE001 - any issue → fall back to Claude
+            log.warning("cheap fast-path failed; using Claude",
+                        extra={"task_id": task.id})
+
+    model = explicit_model or select_model(goal)
+    log.info("assistant model", extra={"task_id": task.id, "model": model})
     try:
         result = run_agentic_loop(
-            driver or make_driver(cfg), goal,
+            driver or make_driver(cfg, model=model), goal,
             shell_runner=runner, max_steps=cfg.assistant_max_steps,
-            system=system_prompt(memory, connectors),
+            system=sys_prompt,
             attachments=attachments,
         )
     except Exception as exc:  # noqa: BLE001 - recorded as a failed result

@@ -64,6 +64,17 @@ def build_user_content(goal: str, attachments: list[dict] | None = None) -> list
     blocks.append({"type": "text", "text": text})
     return blocks
 
+
+def _text_goal(goal: str, attachments: list[dict] | None = None) -> str:
+    """Plain-text goal (with attachment path notes) for providers we drive in
+    text-only mode (OpenAI, Gemini). Images aren't shown to these models in this
+    build, but their on-disk paths are listed so the loop can read them."""
+    blocks = build_user_content(goal, attachments)
+    for b in blocks:
+        if b.get("type") == "text":
+            return b["text"]
+    return f"Goal: {goal}"
+
 # The single tool Claude is given: run one shell command on the Mac.
 _SHELL_TOOL = {
     "name": "run_shell",
@@ -99,15 +110,17 @@ _SYSTEM = (
 )
 
 
-def system_prompt(memory: str = "", connectors: str = "") -> str:
+def system_prompt(memory: str = "", connectors: str = "", history: str = "") -> str:
     """The assistant's system prompt, optionally with the operator's persistent
-    memory and available connectors appended so it 'remembers' across
-    conversations and knows which external services it can use."""
+    memory, available connectors, and the recent conversation so it 'remembers'
+    both across conversations (memory) and within this one (history)."""
     parts = [_SYSTEM]
     if connectors:
         parts.append(connectors)
     if memory:
         parts.append(memory)
+    if history:
+        parts.append(history)
     return "\n\n".join(parts)
 
 
@@ -223,8 +236,8 @@ def run_agentic_loop(
 class AnthropicAgenticDriver(AgenticDriver):
     """Production driver — Claude tool use via the official ``anthropic`` SDK."""
 
-    def __init__(self, config: Config) -> None:
-        self._model = config.anthropic_model
+    def __init__(self, config: Config, model: str | None = None) -> None:
+        self._model = model or config.anthropic_model
         self._api_key = config.anthropic_api_key
         self._max_tokens = max(config.llm_max_tokens, 4096)
         self._client = None
@@ -275,6 +288,114 @@ class AnthropicAgenticDriver(AgenticDriver):
         })
 
 
+class OpenAIAgenticDriver(AgenticDriver):
+    """OpenAI agentic driver — same run_shell tool loop via the openai SDK."""
+
+    def __init__(self, config: Config, model: str | None = None) -> None:
+        self._model = model or config.openai_model
+        self._api_key = config.openai_api_key
+        self._max_tokens = max(config.llm_max_tokens, 4096)
+        self._client = None
+        self._messages: list[dict] = []
+        self._tools = [{
+            "type": "function",
+            "function": {
+                "name": "run_shell",
+                "description": _SHELL_TOOL["description"],
+                "parameters": _SHELL_TOOL["input_schema"],
+            },
+        }]
+
+    def start(self, goal: str, system: str, attachments: list[dict] | None = None) -> None:
+        import openai  # lazy
+
+        self._client = (
+            openai.OpenAI(api_key=self._api_key) if self._api_key else openai.OpenAI()
+        )
+        self._messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": _text_goal(goal, attachments)},
+        ]
+
+    def next_step(self) -> ModelStep:
+        import json
+        resp = self._client.chat.completions.create(
+            model=self._model, messages=self._messages,
+            tools=self._tools, max_completion_tokens=self._max_tokens,
+        )
+        msg = resp.choices[0].message
+        self._messages.append(msg.model_dump(exclude_none=True))
+        calls = []
+        for tc in (msg.tool_calls or []):
+            if tc.function.name == "run_shell":
+                try:
+                    cmd = json.loads(tc.function.arguments or "{}").get("command", "")
+                except ValueError:
+                    cmd = ""
+                calls.append(ShellCall(id=tc.id, command=str(cmd)))
+        return ModelStep(text=msg.content or "", calls=calls, done=not calls)
+
+    def add_results(self, results: list[ShellResult]) -> None:
+        for r in results:
+            self._messages.append(
+                {"role": "tool", "tool_call_id": r.call_id, "content": r.feedback}
+            )
+
+
+class GoogleAgenticDriver(AgenticDriver):
+    """Gemini agentic driver — same run_shell tool loop via the google-genai SDK."""
+
+    def __init__(self, config: Config, model: str | None = None) -> None:
+        self._model = model or config.google_model
+        self._api_key = config.google_api_key
+        self._max_tokens = max(config.llm_max_tokens, 4096)
+        self._client = None
+        self._contents: list = []
+        self._config = None
+        self._types = None
+
+    def start(self, goal: str, system: str, attachments: list[dict] | None = None) -> None:
+        from google import genai
+        from google.genai import types
+
+        self._types = types
+        self._client = genai.Client(api_key=self._api_key)
+        tool = types.Tool(function_declarations=[types.FunctionDeclaration(
+            name="run_shell",
+            description=_SHELL_TOOL["description"],
+            parameters=_SHELL_TOOL["input_schema"],
+        )])
+        self._config = types.GenerateContentConfig(
+            system_instruction=system, tools=[tool],
+            max_output_tokens=self._max_tokens,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        self._contents = [types.Content(
+            role="user", parts=[types.Part(text=_text_goal(goal, attachments))])]
+
+    def next_step(self) -> ModelStep:
+        resp = self._client.models.generate_content(
+            model=self._model, contents=self._contents, config=self._config)
+        cand = resp.candidates[0]
+        self._contents.append(cand.content)
+        parts = cand.content.parts or []
+        text = "".join(p.text for p in parts if getattr(p, "text", None))
+        calls = [
+            ShellCall(id="run_shell", command=str(dict(p.function_call.args or {}).get("command", "")))
+            for p in parts
+            if getattr(p, "function_call", None) and p.function_call.name == "run_shell"
+        ]
+        return ModelStep(text=text, calls=calls, done=not calls)
+
+    def add_results(self, results: list[ShellResult]) -> None:
+        parts = [
+            self._types.Part.from_function_response(
+                name="run_shell", response={"output": r.feedback})
+            for r in results
+        ]
+        self._contents.append(self._types.Content(role="user", parts=parts))
+
+
 class ScriptedDriver(AgenticDriver):
     """Deterministic driver for tests — replays a fixed list of model steps."""
 
@@ -296,6 +417,76 @@ class ScriptedDriver(AgenticDriver):
         self.results_log.append(results)
 
 
-def make_driver(config: Config) -> AgenticDriver:
-    """Factory — the production driver. (Provider-pluggable; Claude for now.)"""
-    return AnthropicAgenticDriver(config)
+def provider_for_model(model: str | None) -> str:
+    """Map a model id to its provider. Defaults to anthropic."""
+    m = (model or "").lower()
+    if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3") or m.startswith("o4") or m.startswith("chatgpt"):
+        return "openai"
+    if m.startswith("gemini"):
+        return "google"
+    return "anthropic"
+
+
+def make_driver(config: Config, model: str | None = None) -> AgenticDriver:
+    """Factory — pick the agentic driver by ``model``. A Claude model (or None)
+    uses the Anthropic driver; gpt-*/o-* use OpenAI; gemini-* use Gemini. All
+    drive the same run_shell tool loop."""
+    provider = provider_for_model(model)
+    if provider == "openai":
+        return OpenAIAgenticDriver(config, model=model)
+    if provider == "google":
+        return GoogleAgenticDriver(config, model=model)
+    return AnthropicAgenticDriver(config, model=model)
+
+
+# --- cost-aware routing --------------------------------------------------
+# Keep everyday work off the priciest model. The agentic shell loop stays on
+# Claude (its tool-use protocol), but the *tier* scales with the task; the
+# cheapest, no-tool conversational/recall queries can skip Claude entirely
+# (see the Gemini fast-path in agent/local_agent.process_assistant_task).
+_OPUS = "claude-opus-4-7"      # $5/$25 — complex, multi-step work only
+_SONNET = "claude-sonnet-4-6"  # $3/$15 — capable default for real tasks
+_HAIKU = "claude-haiku-4-5"    # $1/$5  — light/simple tasks
+
+_COMPLEX_HINTS = (
+    "deploy", "build", "refactor", "audit", "migrate", "investigate",
+    "across all", "every ", "all the", "pipeline", "end to end", "end-to-end",
+    "set up", "configure", "provision", "orchestrate", "step by step",
+    "rewrite", "redesign", "analyze", "diagnose",
+)
+_TRIVIAL_HINTS = (
+    "hi", "hello", "hey", "thanks", "thank you", "yo ", "good morning",
+    "what did i", "what's my", "what is my", "what do you remember",
+    "who are you", "what can you do", "what were we", "remind me what",
+)
+# An action on the Mac/cloud → must use the tool-using loop, never a one-shot.
+_ACTION_HINTS = (
+    "run ", " ls", "ls ", "cat ", "open ", "deploy", "build", "git ", "gcloud",
+    "list ", "show me", "check ", "find ", "search ", "read ", "write ", "edit ",
+    "create ", "delete", "remove", "install", "fix ", "update ", "restart",
+    "kill ", "curl", "file", "folder", "directory", "log", "report", "job",
+    "scrape", "email", "lead", "crm", "website", "push", "pull", "commit",
+    "deploy", "screenshot", "download", "upload",
+)
+
+
+def select_model(goal: str) -> str:
+    """Pick the cheapest capable Claude tier for an agentic goal."""
+    g = goal.strip().lower()
+    if len(goal) > 400 or any(h in g for h in _COMPLEX_HINTS):
+        return _OPUS
+    if len(goal) < 36 or any(h in g for h in _TRIVIAL_HINTS):
+        return _HAIKU
+    return _SONNET
+
+
+def classify_query(goal: str) -> str:
+    """'chat' = answerable from memory/history/general knowledge with no Mac
+    tools (eligible for the cheap one-shot fast-path); 'task' = needs the
+    agentic shell loop. Conservative — anything action-like stays a 'task'."""
+    g = goal.strip().lower()
+    if any(h in g for h in _ACTION_HINTS):
+        return "task"
+    if len(goal) <= 200 and any(h in g for h in _TRIVIAL_HINTS):
+        return "chat"
+    return "task"

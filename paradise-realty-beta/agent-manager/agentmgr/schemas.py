@@ -138,6 +138,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     attachments: list[Attachment] = Field(default_factory=list)
+    model: str | None = None         # UI model selector; "auto"/None = cost-aware Claude
 
 
 class ChatResponse(BaseModel):
