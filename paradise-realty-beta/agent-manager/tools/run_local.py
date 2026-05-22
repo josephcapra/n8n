@@ -62,6 +62,11 @@ def main() -> int:
             "think without it. Add it to agent-manager/.env or export it.\n"
         )
 
+    # Reports go to the shared GCS bucket so cloud-job reports show up here too.
+    os.environ.setdefault("AGENTMGR_REPORTS_BACKEND", "gcs")
+    os.environ.setdefault("AGENTMGR_REPORTS_BUCKET", "paradise-realty-backups")
+    os.environ.setdefault("AGENTMGR_REPORTS_PREFIX", "agentmgr-reports")
+
     cfg = Config(
         state_backend="memory",
         job_runner="local",
