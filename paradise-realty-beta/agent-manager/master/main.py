@@ -48,13 +48,14 @@ from agentmgr.passkey import PasskeyService, challenge_for, verify_assertion
 from agentmgr.llm import make_llm_router
 from agentmgr.memory import MemoryStore
 from agentmgr.planner import Plan, make_planner
-from agentmgr.registry import AgentRegistry, AgentSpec
+from agentmgr.registry import AgentRegistry, AgentSpec, append_agent_to_file
 from agentmgr.schemas import (
     ApprovalResponse,
     ChatRequest,
     ChatResponse,
     ConversationTurn,
     Message,
+    NewAgentRequest,
     TaskResult,
     TaskSpec,
     TaskStatus,
@@ -241,15 +242,70 @@ def build_app(config: Config | None = None) -> FastAPI:
     # --- chat + agents ---------------------------------------------------
     @app.get("/agents", dependencies=[Depends(require_auth)])
     def agents() -> dict:
+        """Roster + live-ish status for the command center.
+
+        local-agent → online (the Mac daemon shares this process), master-inline
+        → ready, cloudrun-job → deployed/offline by checking which Cloud Run jobs
+        actually exist (best-effort, cached)."""
+        deployed = _deployed_job_names(app)
+        out = []
+        for a in app.state.registry.all():
+            if a.runtime == "local-agent":
+                group, status = "local", "online"
+            elif a.runtime == "master-inline":
+                group, status = "inline", "ready"
+            else:  # cloudrun-job
+                group = "cloud"
+                status = (
+                    "unknown" if deployed is None
+                    else "deployed" if a.job_name in deployed
+                    else "offline"
+                )
+            out.append({
+                "name": a.name, "kind": a.kind, "runtime": a.runtime,
+                "region": a.region, "job_name": a.job_name,
+                "capabilities": list(a.capabilities), "description": a.description,
+                "sensitive_default": a.sensitive_default,
+                "group": group, "status": status,
+            })
         return {
-            "agents": [
-                {
-                    "name": a.name, "kind": a.kind, "runtime": a.runtime,
-                    "capabilities": list(a.capabilities), "description": a.description,
-                }
-                for a in registry.all()
-            ]
+            "agents": out,
+            "count": len(out),
+            "master": {"version": __version__, "llm": cfg.llm_provider},
         }
+
+    @app.post("/agents", dependencies=[Depends(require_auth)])
+    def create_agent(spec: NewAgentRequest) -> dict:
+        """Register a new agent (data-only): append to agents.json + hot-reload.
+        A local/inline agent works at once; a new cloud-job agent also needs its
+        Cloud Run job deployed before it can run."""
+        if spec.runtime not in ("cloudrun-job", "local-agent", "master-inline"):
+            raise HTTPException(
+                status_code=422,
+                detail="runtime must be cloudrun-job, local-agent, or master-inline",
+            )
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,40}", spec.name or ""):
+            raise HTTPException(
+                status_code=422,
+                detail="name must be lowercase letters, digits, hyphens (2-41 chars)",
+            )
+        entry = {
+            "name": spec.name,
+            "kind": spec.kind or spec.name,
+            "job_name": spec.job_name or (spec.name if spec.runtime == "cloudrun-job" else ""),
+            "region": spec.region or ("local" if spec.runtime == "local-agent" else cfg.region),
+            "runtime": spec.runtime,
+            "description": spec.description,
+            "capabilities": spec.capabilities,
+            "sensitive_default": spec.sensitive_default,
+        }
+        try:
+            append_agent_to_file(entry)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        app.state.registry = AgentRegistry.load()  # hot-reload for live requests
+        log.info("created agent", extra={"name": spec.name, "runtime": spec.runtime})
+        return {"created": entry, "count": len(app.state.registry.all())}
 
     @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_auth)])
     def chat(req: ChatRequest) -> ChatResponse:
@@ -737,6 +793,21 @@ def _get_cloudrun_admin(app: FastAPI):
 
         app.state.cloudrun_admin = CloudRunAdmin(app.state.config)
     return app.state.cloudrun_admin
+
+
+def _deployed_job_names(app: FastAPI) -> set | None:
+    """Names of Cloud Run jobs that actually exist, cached ~60s for the agent
+    roster. Returns None if the lookup fails (status shown as 'unknown')."""
+    now = time.time()
+    cached = getattr(app.state, "jobs_cache", None)
+    if cached and now - cached[0] < 60:
+        return cached[1]
+    try:
+        names = {j["name"] for j in _get_cloudrun_admin(app).list_jobs()}
+    except Exception:  # noqa: BLE001 - status is best-effort
+        names = None
+    app.state.jobs_cache = (now, names)
+    return names
 
 
 def _execute_inline(app: FastAPI, agent: AgentSpec, task: TaskSpec) -> None:

@@ -146,3 +146,15 @@ class ChatResponse(BaseModel):
     interpretation: str
     task_ids: list[str] = Field(default_factory=list)
     reply: str
+
+
+class NewAgentRequest(BaseModel):
+    """Create a registry agent from the command-center UI (data-only)."""
+    name: str
+    runtime: str                     # cloudrun-job | local-agent | master-inline
+    kind: str = ""
+    job_name: str = ""
+    region: str = ""
+    description: str = ""
+    capabilities: list[str] = Field(default_factory=list)
+    sensitive_default: bool = False

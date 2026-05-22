@@ -69,3 +69,23 @@ class AgentRegistry:
 
     def find_by_capability(self, capability: str) -> list[AgentSpec]:
         return [a for a in self.all() if capability in a.capabilities]
+
+
+def registry_path() -> Path:
+    """Path to the JSON registry file the Master loads."""
+    return _DEFAULT_REGISTRY
+
+
+def append_agent_to_file(entry: dict, path: Path | None = None) -> None:
+    """Append one agent entry to ``agents.json`` (data-only registration).
+
+    Validates the new name is unique within the file, then writes it back so
+    the addition survives restarts. Callers should reload the registry after.
+    """
+    p = path or _DEFAULT_REGISTRY
+    data = json.loads(p.read_text())
+    existing = {a["name"] for a in data.get("agents", [])}
+    if entry["name"] in existing:
+        raise ValueError(f"agent {entry['name']!r} already in registry")
+    data.setdefault("agents", []).append(entry)
+    p.write_text(json.dumps(data, indent=2) + "\n")

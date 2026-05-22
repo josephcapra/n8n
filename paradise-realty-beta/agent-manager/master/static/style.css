@@ -110,6 +110,87 @@ header {
 .banner .arow { display: flex; align-items: center; gap: 8px; }
 .banner .arow .grow { flex: 1; font-size: 14px; }
 
+/* --- command center --- */
+.topbar .logo { color: var(--accent); font-size: 18px; }
+.topbar strong { letter-spacing: 0.3px; }
+.master-status { font-size: 12px; color: var(--muted); margin-left: 10px;
+  display: inline-flex; align-items: center; gap: 6px; }
+.master-status .dot { width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+button.icon.mini { font-size: 15px; padding: 2px 6px; }
+.only-mobile { display: none; }
+
+.cc-grid { flex: 1; min-height: 0; display: grid;
+  grid-template-columns: 250px 1fr 234px; }
+.pane { min-height: 0; display: flex; flex-direction: column;
+  overflow: hidden; }
+.pane.roster { border-right: 1px solid var(--line); background: var(--panel); }
+.pane.actions { border-left: 1px solid var(--line); background: var(--panel);
+  overflow-y: auto; padding-bottom: 14px; }
+.pane.console { min-width: 0; }
+.pane-head { font-size: 11px; letter-spacing: 1.5px; color: var(--muted);
+  padding: 14px 14px 8px; display: flex; align-items: center; gap: 6px;
+  text-transform: uppercase; }
+.badge { background: var(--panel2); color: var(--text); border-radius: 9px;
+  font-size: 11px; padding: 1px 7px; letter-spacing: 0; }
+
+/* roster */
+.agent-list { flex: 1; overflow-y: auto; padding: 0 10px 10px;
+  display: flex; flex-direction: column; gap: 7px; }
+.agent-card { background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 9px 11px; cursor: default;
+  transition: border-color 0.15s, transform 0.05s; }
+.agent-card:hover { border-color: var(--accent); }
+.agent-card .ac-top { display: flex; align-items: center; gap: 7px; }
+.agent-card .ac-name { font-weight: 600; font-size: 14px; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-card .ac-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.agent-card .ac-act { margin-top: 8px; width: 100%; font-size: 12px;
+  padding: 6px; background: var(--panel); border: 1px solid var(--line); }
+.agent-card .ac-act:hover { border-color: var(--accent); color: var(--accent); }
+.sdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.sdot.online, .sdot.ready, .sdot.deployed { background: var(--ok);
+  box-shadow: 0 0 7px var(--ok); }
+.sdot.offline { background: var(--muted); }
+.sdot.unknown { background: var(--warn); box-shadow: 0 0 7px var(--warn); }
+.grp { font-size: 10px; padding: 1px 6px; border-radius: 7px;
+  background: var(--panel); color: var(--muted); }
+
+/* action rail */
+.rail-btn { display: block; width: calc(100% - 24px); margin: 5px 12px;
+  text-align: left; background: var(--panel2); border: 1px solid var(--line);
+  font-size: 14px; padding: 11px 13px; border-radius: 11px; }
+.rail-btn:hover { border-color: var(--accent); }
+.rail-btn.accent { background: var(--accent); color: #fff; border: 0;
+  font-weight: 600; text-align: center; }
+
+/* status tiles */
+.stat-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding: 4px 12px 12px; }
+.stat-tile { background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 10px; }
+.stat-tile .v { font-size: 20px; font-weight: 700; }
+.stat-tile .k { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.5px; }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px;
+  color: var(--muted); margin: 6px 0; }
+.check input { width: auto; margin: 0; }
+
+@media (max-width: 860px) {
+  .only-mobile { display: inline-block; }
+  .cc-grid { display: flex; flex-direction: column; }
+  .pane.roster { border-right: 0; border-bottom: 1px solid var(--line);
+    max-height: 40vh; }
+  .pane.roster.collapsed { display: none; }
+  .pane.actions { border-left: 0; border-top: 1px solid var(--line);
+    flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px; }
+  .pane.actions .pane-head { width: 100%; padding: 4px; }
+  .pane.actions .rail-btn { width: auto; flex: 1 1 40%; margin: 0;
+    text-align: center; }
+  .stat-tiles { width: 100%; }
+}
+
 /* --- sessions sheet --- */
 .sheet { position: fixed; inset: 0; background: rgba(0,0,0,0.5);
   display: flex; align-items: flex-end; }

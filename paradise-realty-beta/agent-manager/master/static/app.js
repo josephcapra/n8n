@@ -5,6 +5,8 @@ const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem("agentmgr_token") || "";
 let conversationId = null;
 let approvalsTimer = null;
+let agentsTimer = null;
+let lastCost = null;
 
 /* ---- base64url <-> ArrayBuffer ---- */
 function b64uToBuf(s) {
@@ -91,14 +93,17 @@ function showLogin() {
   $("login").classList.remove("hidden");
   $("app").classList.add("hidden");
   if (approvalsTimer) clearInterval(approvalsTimer);
+  if (agentsTimer) clearInterval(agentsTimer);
 }
 function showApp() {
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
   $("messages").innerHTML = "";
-  addBubble("sys", "Signed in. Message the manager — try “$ git status” or “cloud run, list jobs”.");
+  addBubble("sys", "Command center online. Message the manager, or pick an agent on the left.");
   refreshApprovals();
   approvalsTimer = setInterval(refreshApprovals, 6000);
+  loadStats().then(loadAgents);
+  agentsTimer = setInterval(() => loadStats().then(loadAgents), 12000);
 }
 function logout() {
   token = "";
@@ -548,6 +553,141 @@ async function addMemory(ev) {
   }
 }
 
+/* ---- command center: agent roster + status ---- */
+async function loadStats() {
+  try { lastCost = await api("GET", "/cost"); } catch (e) {}
+}
+
+async function loadAgents() {
+  let data;
+  try { data = await api("GET", "/agents"); } catch (e) { return; }
+  renderAgents(data);
+}
+
+function agentActionLabel(a) {
+  if (a.group === "cloud") return "▶ Run job";
+  if (a.name === "mac-shell") return "⌨︎ Command";
+  if (a.name === "cloudrun-admin") return "☁︎ List jobs";
+  if (a.name === "security-health") return "🛡 Run scan";
+  return "💬 Message";
+}
+function agentAction(a) {
+  if (a.group === "cloud") return runJobByName(a.job_name || a.name);
+  if (a.name === "mac-shell") return focusChat("$ ");
+  if (a.name === "cloudrun-admin") return quickSend("cloud run, list jobs");
+  if (a.name === "security-health") return quickSend("run a security health check");
+  return focusChat("");
+}
+
+function renderAgents(data) {
+  const agents = data.agents || [];
+  $("agentCount").textContent = agents.length;
+  const list = $("agentList");
+  list.innerHTML = "";
+  agents.forEach((a) => {
+    const card = document.createElement("div");
+    card.className = "agent-card";
+
+    const top = document.createElement("div");
+    top.className = "ac-top";
+    const dot = document.createElement("span");
+    dot.className = "sdot " + a.status;
+    dot.title = a.status;
+    const name = document.createElement("span");
+    name.className = "ac-name";
+    name.textContent = a.name;
+    const grp = document.createElement("span");
+    grp.className = "grp";
+    grp.textContent = a.group;
+    top.append(dot, name, grp);
+
+    const meta = document.createElement("div");
+    meta.className = "ac-meta";
+    const caps = (a.capabilities || []).slice(0, 3).join(", ");
+    meta.textContent = a.status + " · " + a.runtime + (caps ? " · " + caps : "");
+
+    const act = document.createElement("button");
+    act.className = "ac-act";
+    act.textContent = agentActionLabel(a);
+    act.onclick = () => agentAction(a);
+
+    card.append(top, meta, act);
+    list.appendChild(card);
+  });
+  renderStats(agents);
+}
+
+function renderStats(agents) {
+  const live = (s) => ["online", "ready", "deployed"].includes(s);
+  const online = agents.filter((a) => live(a.status)).length;
+  const cloud = agents.filter((a) => a.group === "cloud").length;
+  const local = agents.filter((a) => a.group === "local").length;
+  $("masterStatus").innerHTML =
+    '<span class="dot"></span> Master online · ' + online + "/" + agents.length + " agents";
+  const spend = lastCost ? "$" + (lastCost.total_llm_cost_usd || 0).toFixed(2) : "—";
+  const tiles = [
+    ["Online", online + "/" + agents.length],
+    ["Cloud", cloud],
+    ["Local", local],
+    ["Spend", spend],
+  ];
+  $("statTiles").innerHTML = tiles
+    .map((t) => `<div class="stat-tile"><div class="v">${t[1]}</div><div class="k">${t[0]}</div></div>`)
+    .join("");
+}
+
+/* ---- command center: actions ---- */
+function focusChat(prefix) {
+  const i = $("chatInput");
+  if (prefix) i.value = prefix;
+  i.focus();
+}
+function quickSend(text) {
+  $("chatInput").value = text;
+  sendMessage({ preventDefault() {} });
+}
+async function runJobByName(name) {
+  if (!name) return;
+  addBubble("sys", "Starting job “" + name + "”…");
+  try {
+    await api("POST", "/cloudrun/jobs/" + encodeURIComponent(name) + "/run");
+    addBubble("sys", "Started “" + name + "”.");
+  } catch (e) {
+    addBubble("sys", "Couldn’t run “" + name + "”: " + e.message);
+  }
+}
+
+/* ---- command center: create agent ---- */
+function openNewAgent() {
+  setMsg("newAgentMsg", "");
+  $("newAgentSheet").classList.remove("hidden");
+}
+async function submitNewAgent(ev) {
+  if (ev) ev.preventDefault();
+  const name = $("naName").value.trim();
+  if (!name) return setMsg("newAgentMsg", "Name is required.", true);
+  const body = {
+    name,
+    runtime: $("naRuntime").value,
+    kind: $("naKind").value.trim(),
+    job_name: $("naJob").value.trim(),
+    capabilities: $("naCaps").value.split(",").map((s) => s.trim()).filter(Boolean),
+    description: $("naDesc").value.trim(),
+    sensitive_default: $("naSensitive").checked,
+  };
+  try {
+    await api("POST", "/agents", { body });
+    setMsg("newAgentMsg", "Created “" + name + "”.", false, true);
+    addBubble("sys", "New agent “" + name + "” registered.");
+    ["naName", "naKind", "naJob", "naCaps", "naDesc"].forEach((id) => ($(id).value = ""));
+    $("naSensitive").checked = false;
+    loadAgents();
+    setTimeout(() => $("newAgentSheet").classList.add("hidden"), 900);
+  } catch (e) {
+    setMsg("newAgentMsg", e.message, true);
+  }
+}
+
 /* ---- misc ---- */
 function setMsg(id, text, isErr, isOk) {
   const el = $(id);
@@ -571,6 +711,18 @@ function init() {
     e.target.value = "";
   };
   setupDropAndPaste();
+
+  // command center
+  $("refreshAgents").onclick = loadAgents;
+  $("newAgentBtn").onclick = openNewAgent;
+  $("closeNewAgent").onclick = () => $("newAgentSheet").classList.add("hidden");
+  $("newAgentForm").onsubmit = submitNewAgent;
+  $("uploadBtn").onclick = () => $("fileInput").click();
+  $("rosterToggle").onclick = () => $("rosterPane").classList.toggle("collapsed");
+  $("claudeBtn").onclick = () => {
+    addBubble("sys", "Claude console — type a goal and it runs on your Mac. Read-only commands run automatically; anything else asks for approval.");
+    focusChat("");
+  };
   $("sessionsBtn").onclick = () => {
     $("sessionsSheet").classList.remove("hidden");
     refreshSessions();
