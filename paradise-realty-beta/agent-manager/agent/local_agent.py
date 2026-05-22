@@ -286,6 +286,56 @@ def process_assistant_task(
              extra={"task_id": task.id, "steps": result.steps})
 
 
+_LEAD_SCAN = "/Users/User/paradise-crm-audit/office-leads/lead-response-scan.js"
+
+
+def process_lead_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Scan NEW RealGeeks leads, score + draft a first-response for each (drafts
+    only — never sends). Shells out to the Node scanner that reuses the saved RG
+    browser session."""
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    limit = str(task.payload.get("limit", 10))
+    try:
+        proc = subprocess.run(
+            ["node", _LEAD_SCAN, "--limit", limit],
+            capture_output=True, text=True, timeout=300,
+            cwd=str(Path(_LEAD_SCAN).parent),
+        )
+        line = (proc.stdout.strip().splitlines() or ["{}"])[-1] if proc.stdout.strip() else "{}"
+        # the scanner prints a JSON blob (possibly multi-line) — parse the whole stdout
+        try:
+            data = json.loads(proc.stdout.strip())
+        except Exception:
+            data = json.loads(line)
+    except Exception as exc:  # noqa: BLE001
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"lead scan failed: {str(exc)[:160]}", worker="lead-response"))
+        return
+
+    if data.get("error") == "AUTH_REQUIRED":
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error="RealGeeks session expired — run office-leads/relogin.js", worker="lead-response"))
+        return
+
+    leads = data.get("leads", [])
+    if not leads:
+        answer = "No new leads to respond to right now."
+    else:
+        parts = [f"{len(leads)} new lead(s) — drafted replies (review before sending):"]
+        for L in leads:
+            contact = " · ".join(x for x in (L.get("email"), L.get("phone")) if x)
+            parts.append(f"\n• {L.get('name','(no name)')}  [{L.get('score','?')}]  {contact}\n  ↳ {L.get('draft','')}")
+        answer = "\n".join(parts)
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=TaskStatus.COMPLETED,
+        output={"answer": answer, "count": len(leads), "leads": leads},
+        worker="lead-response"))
+    log.info("lead scan done", extra={"task_id": task.id, "count": len(leads)})
+
+
 def process_security_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
     """Run the security-health scan on this Mac and (optionally) email it."""
     from tools.security_health import run as run_security
@@ -353,6 +403,45 @@ def process_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
         task_id=task.id, status=status, output=output, worker=worker,
         error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
     log.info("CRM action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Taylor: marketing / weekly per-agent reports -------------------------
+
+# Taylor actions -> the agent-reports.js invocation each one runs.
+_TAYLOR_ACTIONS = {
+    "weekly_send": ["office-leads/agent-reports.js", "--to-agents"],
+    "review": ["office-leads/agent-reports.js", "--send-individual"],
+    "preview": ["office-leads/agent-reports.js"],
+}
+
+
+def process_taylor_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Run a Taylor marketing/report action by shelling to agent-reports.js.
+
+    'weekly_send' does a full live pull and emails EACH agent THEIR personalized
+    report (CC the broker). 'review' emails all reports to the broker only.
+    'preview' just builds the report files. Reuses the CRM project dir + the
+    saved RealGeeks browser session.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "taylor"
+    action = str(task.payload.get("action", "weekly_send")).strip()
+    if action not in _TAYLOR_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown Taylor action {action!r}; valid: {sorted(_TAYLOR_ACTIONS)}"))
+        return
+    command = "node " + " ".join(_TAYLOR_ACTIONS[action])
+    log.info("EXECUTING Taylor action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Taylor action finished",
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
@@ -767,7 +856,7 @@ def run_agent(config: Config | None = None) -> None:
     # and the jazzysphotos.com site agent ('jazzysphotos-site').
     handled = (cfg.local_agent_name, "assistant", "security-health",
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
-               "incentive-social")
+               "incentive-social", "taylor")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -787,6 +876,8 @@ def run_agent(config: Config | None = None) -> None:
                             task, store, session_mgr, gate, cfg)
                     elif task.kind == "incentive_social":
                         process_incentive_social_task(task, store)
+                    elif task.kind == "marketing":
+                        process_taylor_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,
