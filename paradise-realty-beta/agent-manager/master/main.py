@@ -425,6 +425,11 @@ def build_app(config: Config | None = None) -> FastAPI:
         return {"connectors": connectors_registry.status()}
 
     # --- security-health worker -----------------------------------------
+    @app.get("/security/status", dependencies=[Depends(require_auth)])
+    def security_status() -> dict:
+        """Cheap, cached, read-only security posture for the health light."""
+        return _security_light(app)
+
     @app.post("/security/health-check", dependencies=[Depends(require_auth)])
     def security_health_check(body: dict = Body(default={})) -> dict:
         """Dispatch the security-health worker (scans this Mac, emails a report)."""
@@ -808,6 +813,27 @@ def _deployed_job_names(app: FastAPI) -> set | None:
         names = None
     app.state.jobs_cache = (now, names)
     return names
+
+
+def _security_light(app: FastAPI) -> dict:
+    """Read-only security posture for the command-center light, cached ~5 min so
+    polling is cheap. Runs the security-health scan with send=False (no email)
+    and maps its A–F grade to a red/yellow/green light."""
+    now = time.time()
+    cached = getattr(app.state, "sec_cache", None)
+    if cached and now - cached[0] < 300:
+        return cached[1]
+    try:
+        from tools.security_health import run as run_security
+
+        res = run_security(send=False)
+        grade = res.get("grade", "?")
+        light = "green" if grade in ("A", "B") else "yellow" if grade == "C" else "red"
+        out = {"grade": grade, "light": light, "counts": res.get("counts", {})}
+    except Exception as exc:  # noqa: BLE001 - light is best-effort
+        out = {"grade": "?", "light": "unknown", "error": str(exc)[:200]}
+    app.state.sec_cache = (now, out)
+    return out
 
 
 def _execute_inline(app: FastAPI, agent: AgentSpec, task: TaskSpec) -> None:

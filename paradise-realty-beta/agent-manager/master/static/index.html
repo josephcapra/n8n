@@ -85,8 +85,21 @@
         </form>
       </main>
 
-      <!-- RIGHT: actions + status -->
+      <!-- RIGHT: system lights + actions + status -->
       <aside class="pane actions">
+        <div class="pane-head">SYSTEM</div>
+        <div class="lights">
+          <div class="light-row">
+            <span id="healthLight" class="light unknown"></span>
+            <div class="ltext"><div class="lname">Health</div>
+              <div id="healthMsg" class="lmsg muted">checking…</div></div>
+          </div>
+          <div class="light-row">
+            <span id="secLight" class="light unknown"></span>
+            <div class="ltext"><div class="lname">Security</div>
+              <div id="secMsg" class="lmsg muted">checking…</div></div>
+          </div>
+        </div>
         <div class="pane-head">ACTIONS</div>
         <button id="claudeBtn" class="rail-btn">&#129302; Claude console</button>
         <button id="jobsBtn" class="rail-btn">&#9654; Run a job</button>

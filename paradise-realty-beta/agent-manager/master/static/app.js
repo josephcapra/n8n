@@ -103,7 +103,11 @@ function showApp() {
   refreshApprovals();
   approvalsTimer = setInterval(refreshApprovals, 6000);
   loadStats().then(loadAgents);
-  agentsTimer = setInterval(() => loadStats().then(loadAgents), 12000);
+  loadSecurity();
+  agentsTimer = setInterval(() => {
+    loadStats().then(loadAgents);
+    loadSecurity();
+  }, 12000);
 }
 function logout() {
   token = "";
@@ -554,13 +558,38 @@ async function addMemory(ev) {
 }
 
 /* ---- command center: agent roster + status ---- */
+function setLight(id, color, msg) {
+  const el = $(id);
+  if (!el) return;
+  el.className = "light " + color;
+  const m = $(id.replace("Light", "Msg"));
+  if (m && msg != null) m.textContent = msg;
+}
+
 async function loadStats() {
   try { lastCost = await api("GET", "/cost"); } catch (e) {}
 }
 
+async function loadSecurity() {
+  try {
+    const s = await api("GET", "/security/status");
+    const label =
+      s.light === "unknown" ? "couldn’t check" :
+      s.grade && s.grade !== "?" ? "grade " + s.grade : s.light;
+    setLight("secLight", s.light || "unknown", label);
+  } catch (e) {
+    setLight("secLight", "unknown", "unavailable");
+  }
+}
+
 async function loadAgents() {
   let data;
-  try { data = await api("GET", "/agents"); } catch (e) { return; }
+  try {
+    data = await api("GET", "/agents");
+  } catch (e) {
+    setLight("healthLight", "red", "Master unreachable");
+    return;
+  }
   renderAgents(data);
 }
 
@@ -634,6 +663,14 @@ function renderStats(agents) {
   $("statTiles").innerHTML = tiles
     .map((t) => `<div class="stat-tile"><div class="v">${t[1]}</div><div class="k">${t[0]}</div></div>`)
     .join("");
+
+  // health light: red if a local agent is down, yellow if cloud status is
+  // unknown, green otherwise. (Undeployed scaffolding doesn't drag it down.)
+  const localDown = agents.filter((a) => a.group === "local" && a.status !== "online").length;
+  const unknown = agents.filter((a) => a.status === "unknown").length;
+  if (localDown) setLight("healthLight", "red", localDown + " local agent(s) down");
+  else if (unknown) setLight("healthLight", "yellow", "cloud status unknown");
+  else setLight("healthLight", "green", "all systems operational");
 }
 
 /* ---- command center: actions ---- */

@@ -8,6 +8,9 @@
   --accent: #5b8cff;
   --ok: #3ad29f;
   --warn: #ffb454;
+  --green: #3ad29f;
+  --yellow: #f5c451;
+  --red: #ff5d5d;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; }
@@ -149,10 +152,30 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
   padding: 6px; background: var(--panel); border: 1px solid var(--line); }
 .agent-card .ac-act:hover { border-color: var(--accent); color: var(--accent); }
 .sdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.sdot.online, .sdot.ready, .sdot.deployed { background: var(--ok);
-  box-shadow: 0 0 7px var(--ok); }
-.sdot.offline { background: var(--muted); }
-.sdot.unknown { background: var(--warn); box-shadow: 0 0 7px var(--warn); }
+.sdot.online, .sdot.ready, .sdot.deployed { background: var(--green);
+  box-shadow: 0 0 7px var(--green); }
+.sdot.offline { background: var(--red); box-shadow: 0 0 7px var(--red); }
+.sdot.unknown { background: var(--yellow); box-shadow: 0 0 7px var(--yellow); }
+
+/* system health/security lights */
+.lights { padding: 2px 12px 6px; display: flex; flex-direction: column; gap: 8px; }
+.light-row { display: flex; align-items: center; gap: 11px;
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 11px; padding: 9px 12px; }
+.light { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--muted); position: relative; }
+.light::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  opacity: 0.35; background: inherit; }
+.light.green { background: var(--green); box-shadow: 0 0 12px var(--green); }
+.light.yellow { background: var(--yellow); box-shadow: 0 0 12px var(--yellow);
+  animation: pulse 1.8s ease-in-out infinite; }
+.light.red { background: var(--red); box-shadow: 0 0 12px var(--red);
+  animation: pulse 1s ease-in-out infinite; }
+.light.unknown { background: var(--muted); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+.ltext { line-height: 1.2; }
+.lname { font-size: 14px; font-weight: 600; }
+.lmsg { font-size: 12px; }
 .grp { font-size: 10px; padding: 1px 6px; border-radius: 7px;
   background: var(--panel); color: var(--muted); }
 
