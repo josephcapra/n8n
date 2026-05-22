@@ -121,11 +121,11 @@
     {
       "name": "incentive-social",
       "kind": "incentive_social",
-      "job_name": "incentive-social-agent",
-      "region": "us-east1",
-      "runtime": "cloudrun-job",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
       "worker_module": "worker.incentive_social",
-      "description": "Scans the builder-incentives Google Sheet for fresh, customer-facing incentives (excludes mortgage rates/financing and agent/realtor bonuses), drafts Facebook + Instagram posts linked to the matching SE-Florida area page, and emails them to the operator for approval. Posting to Meta happens only after approval. Sends email and posts to social, so SENSITIVE.",
+      "description": "Scans the builder-incentives Google Sheet for fresh, customer-facing incentives (excludes mortgage rates/financing and agent/realtor bonuses), drafts Facebook + Instagram posts linked to the matching SE-Florida area page, and emails them to the operator for approval. Runs on the Mac via the local agent (the Cloud Run job was never deployed). Posting to Meta happens only after approval. Sends email, so SENSITIVE.",
       "capabilities": ["social", "incentives", "marketing", "report", "email"],
       "sensitive_default": true
     },

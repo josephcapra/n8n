@@ -688,6 +688,22 @@ def _process_jazzysphotos_goal(
         worker="jazzysphotos-site"))
 
 
+def process_incentive_social_task(task: TaskSpec, store: StateStore) -> None:
+    """Run the incentive-social pipeline locally — sheet scan -> drafts ->
+    approval email. The Cloud Run job was never deployed; the pipeline lives in
+    ~/incentive-social-agent and runs on the Mac via its worker adapter, which
+    sets RUNNING and writes the TaskResult itself."""
+    set_correlation_id(task.correlation_id)
+    from worker.incentive_social import run_task
+    try:
+        run_task(task.id, store)
+    except Exception as exc:  # noqa: BLE001 - keep the daemon alive; record failure
+        log.exception("incentive-social run failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"{type(exc).__name__}: {exc}", worker="incentive-social"))
+
+
 def run_agent(config: Config | None = None) -> None:
     """Main poll loop. Runs until interrupted (Ctrl-C)."""
     cfg = config or load_config()
@@ -709,7 +725,8 @@ def run_agent(config: Config | None = None) -> None:
     # Office-Lead CRM agent ('crm-office-leads' reports + 'crm-task-cleanup'),
     # and the jazzysphotos.com site agent ('jazzysphotos-site').
     handled = (cfg.local_agent_name, "assistant", "security-health",
-               "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site")
+               "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
+               "incentive-social")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -727,6 +744,8 @@ def run_agent(config: Config | None = None) -> None:
                     elif task.kind == "site":
                         process_jazzysphotos_task(
                             task, store, session_mgr, gate, cfg)
+                    elif task.kind == "incentive_social":
+                        process_incentive_social_task(task, store)
                     else:
                         process_task(
                             task, store, session_mgr, gate,
