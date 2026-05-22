@@ -28,7 +28,7 @@ from collections import deque
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from agentmgr import __version__
@@ -346,6 +346,21 @@ def build_app(config: Config | None = None) -> FastAPI:
             })
         log.info("received chat attachments", extra={"count": len(saved)})
         return {"attachments": saved}
+
+    @app.get("/reports", dependencies=[Depends(require_auth)])
+    def reports_list() -> dict:
+        """Reports the system has saved (the same HTML it emails you)."""
+        from agentmgr.reports import list_reports
+        return {"reports": list_reports()}
+
+    @app.get("/reports/{report_id}", dependencies=[Depends(require_auth)])
+    def report_detail(report_id: str) -> HTMLResponse:
+        """Serve one report's full HTML (opened in a new window by the UI)."""
+        from agentmgr.reports import get_report_html
+        html = get_report_html(report_id)
+        if html is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        return HTMLResponse(content=html)
 
     @app.get("/cost", dependencies=[Depends(require_auth)])
     def cost() -> dict:

@@ -104,9 +104,11 @@ function showApp() {
   approvalsTimer = setInterval(refreshApprovals, 6000);
   loadStats().then(loadAgents);
   loadSecurity();
+  loadReports();
   agentsTimer = setInterval(() => {
     loadStats().then(loadAgents);
     loadSecurity();
+    loadReports();
   }, 12000);
 }
 function logout() {
@@ -593,6 +595,51 @@ async function loadAgents() {
   renderAgents(data);
 }
 
+/* ---- command center: reports ---- */
+async function loadReports() {
+  let reports;
+  try { reports = (await api("GET", "/reports")).reports || []; } catch (e) { return; }
+  const list = $("reportList");
+  list.innerHTML = "";
+  if (!reports.length) {
+    list.innerHTML = "<p class='muted small' style='padding:0 12px'>No reports yet.</p>";
+    return;
+  }
+  reports.forEach((r) => {
+    const link = document.createElement("a");
+    link.className = "report-link";
+    link.href = "#";
+    const t = document.createElement("div");
+    t.className = "rl-title";
+    t.textContent = r.title;
+    const m = document.createElement("div");
+    m.className = "rl-meta";
+    m.textContent = (r.source ? r.source + " · " : "") + r.updated_at;
+    link.append(t, m);
+    link.onclick = (e) => { e.preventDefault(); openReport(r.id, r.title); };
+    list.appendChild(link);
+  });
+}
+
+async function openReport(id, title) {
+  try {
+    const headers = {};
+    if (token) headers["Authorization"] = "Bearer " + token;
+    const res = await fetch("/reports/" + encodeURIComponent(id), { headers });
+    if (res.status === 401) { logout(); throw new Error("session expired — sign in again"); }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const html = await res.text();
+    const w = window.open("", "_blank");
+    if (!w) { addBubble("sys", "Pop-up blocked — allow pop-ups to open reports."); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    try { w.document.title = title || "Report"; } catch (e) {}
+  } catch (e) {
+    addBubble("sys", "Couldn’t open report: " + e.message);
+  }
+}
+
 function agentActionLabel(a) {
   if (a.group === "cloud") return "▶ Run job";
   if (a.name === "mac-shell") return "⌨︎ Command";
@@ -757,6 +804,7 @@ function init() {
 
   // command center
   $("refreshAgents").onclick = loadAgents;
+  $("refreshReports").onclick = loadReports;
   $("newAgentBtn").onclick = openNewAgent;
   $("closeNewAgent").onclick = () => $("newAgentSheet").classList.add("hidden");
   $("newAgentForm").onsubmit = submitNewAgent;
