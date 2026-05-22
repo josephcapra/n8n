@@ -99,6 +99,17 @@ CONNECTORS: tuple[Connector, ...] = (
               "$REALGEEKS_URL.",
     ),
     Connector(
+        id="beaches_mls", name="Beaches MLS (Spark)",
+        required_env=("SPARK_ACCESS_TOKEN",),
+        optional_env=("SPARK_BASE_URL",),
+        summary="BeachesMLS listing data via the Spark Platform RESO OData feed.",
+        usage="Token in $SPARK_ACCESS_TOKEN. RESO OData at $SPARK_BASE_URL "
+              "(default https://replication.sparkapi.com) — e.g. GET "
+              "/Reso/OData/Property with 'Authorization: Bearer $SPARK_ACCESS_TOKEN'. "
+              "A ready client + analytics live in ~/paradise-realty/spark "
+              "(pull_listings.py for filtered pulls, analytics.py for market/CMA).",
+    ),
+    Connector(
         id="google_drive", name="Google Drive",
         required_env=(),
         summary="Search and read the operator's Google Drive to find knowledge.",
