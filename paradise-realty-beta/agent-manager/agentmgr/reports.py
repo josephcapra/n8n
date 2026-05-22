@@ -66,11 +66,13 @@ def _gcs_list() -> list[dict]:
     b = _gcs_bucket()
     out = []
     for blob in b.list_blobs(prefix=f"{_prefix()}/"):
-        if blob.name.endswith(".json"):
+        if blob.name.endswith(".json") and not blob.name.endswith("index.json"):
             try:
-                out.append(json.loads(blob.download_as_text()))
+                meta = json.loads(blob.download_as_text())
             except (ValueError, OSError):
-                pass
+                continue
+            if isinstance(meta, dict) and meta.get("id"):
+                out.append(meta)
     return out
 
 
@@ -92,10 +94,14 @@ def _file_list() -> list[dict]:
         return []
     out = []
     for j in _FILE_DIR.glob("*.json"):
+        if j.name == "index.json":  # legacy format — ignore
+            continue
         try:
-            out.append(json.loads(j.read_text()))
+            meta = json.loads(j.read_text())
         except (ValueError, OSError):
-            pass
+            continue
+        if isinstance(meta, dict) and meta.get("id"):
+            out.append(meta)
     return out
 
 

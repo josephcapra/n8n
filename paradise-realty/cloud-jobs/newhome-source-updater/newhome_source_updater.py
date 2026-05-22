@@ -254,10 +254,18 @@ View sheet: https://docs.google.com/spreadsheets/d/{SHEET_ID}
 <p><a href="https://docs.google.com/spreadsheets/d/{SHEET_ID}">View spreadsheet →</a></p>
 </body></html>"""
 
+    subject = f"New Home Source Update — {len(added)} added, {len(sold_out)} sold out ({TODAY})"
+    try:
+        import agentmgr_reports
+        agentmgr_reports.save_report("newhome-source-updater", subject, body_html,
+                                     source="newhome-source-updater")
+    except Exception:  # noqa: BLE001 - report capture is best-effort
+        pass
+
     payload = {
         "personalizations": [{"to": [{"email": REPORT_TO}]}],
         "from": {"email": REPORT_FROM, "name": "Paradise Realty Reports"},
-        "subject": f"New Home Source Update — {len(added)} added, {len(sold_out)} sold out ({TODAY})",
+        "subject": subject,
         "content": [
             {"type": "text/plain", "value": body_text},
             {"type": "text/html",  "value": body_html},

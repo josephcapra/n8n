@@ -458,10 +458,17 @@ def build_area_section(area_diff: dict | None) -> str:
     else:
         body = broke_html + changed_html + add_html + rem_html
 
+    note = (
+        "<p style='font-size:11px;color:#888;margin-top:6px'>"
+        "Title / meta / heading / schema edits are exact. Body-copy deltas can "
+        "include live IDX listing inventory that refreshes on its own, not just authored text."
+        "</p>"
+    )
     return f"""
 <h2>🏘 Area-page changes <span style="font-weight:normal;font-size:12px;color:#888">since {since} ET</span></h2>
 <div>{kpis}</div>
 {body}
+{note if (changed or broke) else ''}
 """
 
 
@@ -813,7 +820,7 @@ def main() -> int:
         tracked = area_changes.load_tracked_urls(area_tracked_gcs, gcs_project)
         if tracked:
             prev = area_changes.load_snapshot(area_snapshot_gcs, gcs_project)
-            cur = area_changes.build_snapshot(tracked, workers=area_workers)
+            cur = area_changes.build_snapshot(tracked, workers=area_workers, prev=prev)
             area_diff = area_changes.diff_snapshots(prev, cur)
             area_changes.save_snapshot(cur, area_snapshot_gcs, gcs_project)
             logger.info(
@@ -845,6 +852,14 @@ def main() -> int:
         gsc_area=gsc_area,
         area_diff=area_diff,
     )
+    try:
+        import agentmgr_reports
+        agentmgr_reports.save_report(
+            "bing-daily",
+            f"Website Report — {datetime.now(ZoneInfo('America/New_York')).strftime('%b %d, %Y')}",
+            html, source="bing-daily")
+    except Exception:  # noqa: BLE001 - report capture is best-effort
+        pass
     if sg_key and to_email:
         google_bit = (
             f" · G {gsc_traffic['impressions']:,}/30d impr"
