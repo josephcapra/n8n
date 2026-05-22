@@ -441,9 +441,10 @@ def build_app(config: Config | None = None) -> FastAPI:
 
     # --- security-health worker -----------------------------------------
     @app.get("/security/status", dependencies=[Depends(require_auth)])
-    def security_status() -> dict:
-        """Cheap, cached, read-only security posture for the health light."""
-        return _security_light(app)
+    def security_status(fresh: bool = False) -> dict:
+        """Cheap, cached, read-only security posture for the health light.
+        Includes findings so the GUI can show deficiencies. ?fresh=1 re-scans."""
+        return _security_light(app, fresh=fresh)
 
     @app.post("/security/health-check", dependencies=[Depends(require_auth)])
     def security_health_check(body: dict = Body(default={})) -> dict:
@@ -870,13 +871,14 @@ def _deployed_job_names(app: FastAPI) -> set | None:
     return names
 
 
-def _security_light(app: FastAPI) -> dict:
+def _security_light(app: FastAPI, fresh: bool = False) -> dict:
     """Read-only security posture for the command-center light, cached ~5 min so
-    polling is cheap. Runs the security-health scan with send=False (no email)
-    and maps its A–F grade to a red/yellow/green light."""
+    polling is cheap. Runs the security-health scan with send=False (no email),
+    maps its A–F grade to a red/yellow/green light, and includes the findings so
+    the GUI can show the deficiencies on click. Pass fresh=True to bypass cache."""
     now = time.time()
     cached = getattr(app.state, "sec_cache", None)
-    if cached and now - cached[0] < 300:
+    if not fresh and cached and now - cached[0] < 300:
         return cached[1]
     try:
         from tools.security_health import run as run_security
@@ -884,9 +886,10 @@ def _security_light(app: FastAPI) -> dict:
         res = run_security(send=False)
         grade = res.get("grade", "?")
         light = "green" if grade in ("A", "B") else "yellow" if grade == "C" else "red"
-        out = {"grade": grade, "light": light, "counts": res.get("counts", {})}
+        out = {"grade": grade, "light": light, "counts": res.get("counts", {}),
+               "findings": res.get("findings", [])}
     except Exception as exc:  # noqa: BLE001 - light is best-effort
-        out = {"grade": "?", "light": "unknown", "error": str(exc)[:200]}
+        out = {"grade": "?", "light": "unknown", "error": str(exc)[:200], "findings": []}
     app.state.sec_cache = (now, out)
     return out
 

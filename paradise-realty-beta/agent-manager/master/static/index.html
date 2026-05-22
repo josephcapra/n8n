@@ -94,9 +94,9 @@
             <div class="ltext"><div class="lname">Health</div>
               <div id="healthMsg" class="lmsg muted">checking…</div></div>
           </div>
-          <div class="light-row">
+          <div id="secRow" class="light-row clickable" title="Click to see security deficiencies">
             <span id="secLight" class="light unknown"></span>
-            <div class="ltext"><div class="lname">Security</div>
+            <div class="ltext"><div class="lname">Security <span class="chevron">&rsaquo;</span></div>
               <div id="secMsg" class="lmsg muted">checking…</div></div>
           </div>
         </div>
@@ -297,6 +297,19 @@
         <button id="naSubmit" type="submit" class="primary">Create agent</button>
       </form>
       <p id="newAgentMsg" class="msg"></p>
+    </div>
+  </div>
+
+  <!-- ============ SECURITY DEFICIENCIES SHEET ============ -->
+  <div id="securitySheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Security deficiencies</strong>
+        <div class="spacer"></div>
+        <button id="refreshSecurity" class="icon mini" title="Re-scan now">&#8635;</button>
+        <button id="closeSecurity" class="icon">&times;</button>
+      </header>
+      <p id="secSummary" class="muted small">Scanning…</p>
+      <div id="secFindings"></div>
     </div>
   </div>
 

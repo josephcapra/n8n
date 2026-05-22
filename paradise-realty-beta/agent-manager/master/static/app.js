@@ -572,16 +572,86 @@ async function loadStats() {
   try { lastCost = await api("GET", "/cost"); } catch (e) {}
 }
 
+let lastSecurity = null;
+function secLabel(s) {
+  return s.light === "unknown" ? "couldn’t check"
+    : s.grade && s.grade !== "?" ? "grade " + s.grade : s.light;
+}
 async function loadSecurity() {
   try {
     const s = await api("GET", "/security/status");
-    const label =
-      s.light === "unknown" ? "couldn’t check" :
-      s.grade && s.grade !== "?" ? "grade " + s.grade : s.light;
-    setLight("secLight", s.light || "unknown", label);
+    lastSecurity = s;
+    setLight("secLight", s.light || "unknown", secLabel(s));
   } catch (e) {
     setLight("secLight", "unknown", "unavailable");
   }
+}
+
+async function openSecuritySheet(forceFresh) {
+  $("securitySheet").classList.remove("hidden");
+  const summary = $("secSummary");
+  if (forceFresh || !lastSecurity) {
+    summary.textContent = "Scanning…";
+    $("secFindings").innerHTML = "";
+    try {
+      lastSecurity = await api("GET", "/security/status" + (forceFresh ? "?fresh=1" : ""));
+      setLight("secLight", lastSecurity.light || "unknown", secLabel(lastSecurity));
+    } catch (e) {
+      summary.textContent = "Couldn’t scan: " + e.message;
+      return;
+    }
+  }
+  renderSecurity(lastSecurity);
+}
+
+function renderSecurity(s) {
+  const summary = $("secSummary");
+  const list = $("secFindings");
+  list.innerHTML = "";
+  if (!s || s.light === "unknown") {
+    summary.textContent = "Security scan unavailable" + (s && s.error ? ": " + s.error : ".");
+    return;
+  }
+  const c = s.counts || {};
+  summary.textContent = "Grade " + (s.grade || "?") + " — " +
+    (c.critical || 0) + " critical · " + (c.high || 0) + " high · " +
+    (c.medium || 0) + " medium · " + (c.low || 0) + " low";
+  const order = { critical: 0, high: 1, medium: 2, low: 3, ok: 4 };
+  const defs = (s.findings || [])
+    .filter((f) => f.severity !== "ok")
+    .sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+  if (!defs.length) {
+    const ok = document.createElement("p");
+    ok.className = "muted small";
+    ok.style.padding = "0 4px";
+    ok.textContent = "No deficiencies found — all clear. ✅";
+    list.appendChild(ok);
+    return;
+  }
+  defs.forEach((f) => {
+    const row = document.createElement("div");
+    row.className = "finding sev-" + f.severity;
+    const tag = document.createElement("span");
+    tag.className = "sev";
+    tag.textContent = (f.severity || "").toUpperCase();
+    const body = document.createElement("div");
+    body.className = "fbody";
+    const title = document.createElement("div");
+    title.className = "ftitle";
+    title.textContent = f.title || "";
+    const detail = document.createElement("div");
+    detail.className = "fdetail";
+    detail.textContent = f.detail || "";
+    body.append(title, detail);
+    if (f.fix) {
+      const fix = document.createElement("div");
+      fix.className = "ffix";
+      fix.textContent = "Fix: " + f.fix;
+      body.appendChild(fix);
+    }
+    row.append(tag, body);
+    list.appendChild(row);
+  });
 }
 
 async function loadAgents() {
@@ -929,6 +999,9 @@ function init() {
   // command center
   $("refreshAgents").onclick = loadAgents;
   $("refreshReports").onclick = loadReports;
+  $("secRow").onclick = () => openSecuritySheet(false);
+  $("closeSecurity").onclick = () => $("securitySheet").classList.add("hidden");
+  $("refreshSecurity").onclick = () => openSecuritySheet(true);
   $("newAgentBtn").onclick = openNewAgent;
   $("closeNewAgent").onclick = () => $("newAgentSheet").classList.add("hidden");
   $("newAgentForm").onsubmit = submitNewAgent;
