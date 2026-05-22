@@ -7,7 +7,10 @@ Logic per row:
   2. Source URL priority: Price Source URL → Builder URL → DuckDuckGo web search
   3. Scrape: paradise API (fast) for paradiserealtyfla.com, Playwright for all others
   4. Price Category: Attainable / Mid-Range / Upper Mid-Range / Luxury / Ultra-Luxury
-  5. Batch-write to sheet; flush every 10 rows; neon-green highlight updated cells
+  5. Columns written: H (Short Description, if empty) through last column
+     — including Price Category, Price Source URL, Last Verified, and all
+       Area_* / Listing_* columns.
+  6. Batch-write to sheet; flush every 10 rows; neon-green highlight updated cells
 
 Resumable: /tmp/update_communities_checkpoint.json
 Usage:
@@ -84,6 +87,25 @@ def market_hotness(avg_dom):
 
 def mode_val(lst):
     return Counter(lst).most_common(1)[0][0] if lst else ""
+
+
+def make_short_desc(name, city, county, price_cat, listings, hoa_fee, hoa_freq):
+    location = city or (f"{county} County" if county else "Florida")
+    desc = f"{name} is a residential community in {location}"
+    if price_cat:
+        desc += f" offering {price_cat.lower()} homes"
+    if listings:
+        desc += f" with {listings} active listing{'s' if int(listings) != 1 else ''}"
+    desc += "."
+    if hoa_fee:
+        try:
+            freq_label = {"Monthly": "month", "Quarterly": "quarter", "Annual": "year"}.get(
+                hoa_freq, "month"
+            )
+            desc += f" HOA approximately ${float(hoa_fee):,.0f}/{freq_label}."
+        except Exception:
+            pass
+    return desc
 
 
 def normalize_url(url):
@@ -439,9 +461,11 @@ def main():
     city_col        = ci("City")
     builder_col     = ci("Builder")
     builder_url_col = ci("Builder URL")
-    price_src_col   = ci("Price Source URL")
-    status_col      = ci("Status")
+    short_desc_col  = ci("Short Description")
     price_cat_col   = ci("Price Category")
+    price_src_col   = ci("Price Source URL")
+    last_verified_col = ci("Last Verified")
+    status_col      = ci("Status")
     med_price_col   = ci("Area_Median_Price")
     act_list_col    = ci("Area_Active_Listings")
     dom_col         = ci("Area_Avg_DOM")
@@ -486,6 +510,7 @@ def main():
         city        = cell(city_col)
         builder     = cell(builder_col)
         builder_url = cell(builder_url_col)
+        short_desc  = cell(short_desc_col)
         price_src   = cell(price_src_col)
 
         if not name:
@@ -570,10 +595,23 @@ def main():
             })
             fmt_requests.append(_fmt_req(tab_sheet_id, row_i, col_i))
 
+        # Column H: Short Description — only write if currently empty
+        if not short_desc:
+            listings_count = data.get("Area_Active_Listings") or ""
+            hoa_fee_val    = data.get("Listing_HOA_Fee") or ""
+            hoa_freq_val   = data.get("Listing_HOA_Freq") or ""
+            generated_desc = make_short_desc(
+                name, city, county, cat, listings_count, hoa_fee_val, hoa_freq_val
+            )
+            queue(short_desc_col, generated_desc)
+
         if write_price_src:
             queue(price_src_col, source_url)
         if cat:
             queue(price_cat_col, cat)
+
+        # Column K: Last Verified — always update when we successfully scrape
+        queue(last_verified_col, TODAY)
 
         queue(med_price_col, data.get("Area_Median_Price"))
         queue(act_list_col,  data.get("Area_Active_Listings"))
@@ -609,5 +647,22 @@ def main():
     print(f"Checkpoint: {CHECKPOINT_FILE}")
 
 
+def _run_as_agentmgr_worker(payload, task):
+    """Agent-Manager worker entry: run the scrape, return a result summary.
+    Honors payload['args'] as a CLI override; otherwise keeps the container's
+    configured args (e.g. --fresh)."""
+    args = payload.get("args")
+    if args is not None:
+        sys.argv = [sys.argv[0], *args]
+    rc = main()
+    if rc not in (0, None):
+        raise RuntimeError(f"communities-scraper exited with code {rc}")
+    return {"result": "communities-scraper completed", "exit_code": int(rc or 0)}
+
+
 if __name__ == "__main__":
+    import agentmgr_worker
+    if agentmgr_worker.task_id():
+        sys.exit(agentmgr_worker.run_as_worker(
+            "communities-scraper", _run_as_agentmgr_worker))
     main()

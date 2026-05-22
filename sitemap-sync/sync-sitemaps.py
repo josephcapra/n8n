@@ -346,5 +346,22 @@ def main() -> int:
     return 0 if success else 1
 
 
+def _run_as_agentmgr_worker(payload, task):
+    """Agent-Manager worker entry: run the weekly sitemap sync. Honors
+    payload['args'] as a CLI override; otherwise keeps the container's
+    configured flags (--source-gcs-csv … --skip-redirects --email-to …)."""
+    args = payload.get("args")
+    if args is not None:
+        sys.argv = [sys.argv[0], *args]
+    rc = main()
+    if rc not in (0, None):
+        raise RuntimeError(f"sitemap-sync exited with code {rc}")
+    return {"result": "sitemap-sync-weekly completed", "exit_code": int(rc or 0)}
+
+
 if __name__ == "__main__":
+    import agentmgr_worker
+    if agentmgr_worker.task_id():
+        sys.exit(agentmgr_worker.run_as_worker(
+            "sitemap-sync-weekly", _run_as_agentmgr_worker))
     sys.exit(main())

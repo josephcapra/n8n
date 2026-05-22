@@ -52,6 +52,50 @@
       "description": "Reads and manages Cloud Run via the Master's scoped service account. Works even when the Mac is offline. Read ops are benign; mutating ops are SENSITIVE.",
       "capabilities": ["cloudrun", "cloudrun-read", "cloudrun-manage"],
       "sensitive_default": false
+    },
+    {
+      "name": "communities-scraper",
+      "kind": "scrape_communities",
+      "job_name": "communities-scraper",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "update_communities_all",
+      "description": "Scrapes new-construction community data (listings, pricing, DOM, descriptions) and writes it to the communities Google Sheet. Long-running Playwright job; mutates the sheet, so SENSITIVE.",
+      "capabilities": ["scrape", "communities", "sheets"],
+      "sensitive_default": true
+    },
+    {
+      "name": "newhome-source-updater",
+      "kind": "update_newhome_source",
+      "job_name": "newhome-source-updater",
+      "region": "us-central1",
+      "runtime": "cloudrun-job",
+      "worker_module": "newhome_source_updater",
+      "description": "Refreshes the FL new-home community source list: adds new communities, marks sold-out ones, emails a change report. Mutates the source sheet, so SENSITIVE.",
+      "capabilities": ["communities", "sheets", "report"],
+      "sensitive_default": true
+    },
+    {
+      "name": "sitemap-sync-weekly",
+      "kind": "sync_sitemaps",
+      "job_name": "sitemap-sync-weekly",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "sync-sitemaps",
+      "description": "Weekly sitemap sync — builds sitemaps from the communities CSV in GCS and uploads them. Accepts payload.args to override the default CLI flags. Publishes sitemaps, so SENSITIVE.",
+      "capabilities": ["sitemap", "seo", "gcs"],
+      "sensitive_default": true
+    },
+    {
+      "name": "bing-daily",
+      "kind": "bing_manage",
+      "job_name": "bing-daily",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "bing_manager",
+      "description": "Daily Bing Webmaster automation — submits URLs via IndexNow and pulls the Bing SEO report. Submits to Bing, so SENSITIVE.",
+      "capabilities": ["bing", "seo", "indexnow", "report"],
+      "sensitive_default": true
     }
   ]
 }
