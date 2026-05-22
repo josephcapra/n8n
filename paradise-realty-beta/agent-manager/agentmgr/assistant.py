@@ -15,6 +15,8 @@ tool use). :class:`ScriptedDriver` backs the tests.
 
 from __future__ import annotations
 
+import base64
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -22,6 +24,45 @@ from .config import Config
 from .logging_utils import get_logger
 
 log = get_logger("agentmgr.assistant")
+
+_IMAGE_MEDIA_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+
+def build_user_content(goal: str, attachments: list[dict] | None = None) -> list[dict]:
+    """Build the first user-turn content for Claude.
+
+    Image attachments become base64 image blocks so Claude can actually *see*
+    screenshots; every attachment (image or not) is also listed by on-disk path
+    so the assistant can read/process it with shell commands. Returns a content
+    block list (text-only when there are no attachments)."""
+    blocks: list[dict] = []
+    notes: list[str] = []
+    for att in attachments or []:
+        path = att.get("path") or ""
+        name = att.get("filename") or (os.path.basename(path) if path else "file")
+        media_type = att.get("media_type") or ""
+        if att.get("kind") == "image" and media_type in _IMAGE_MEDIA_TYPES and os.path.exists(path):
+            try:
+                data = base64.standard_b64encode(open(path, "rb").read()).decode()
+                blocks.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": data},
+                })
+                notes.append(f"- {name} — image shown above (also saved at {path})")
+                continue
+            except OSError:
+                pass
+        notes.append(f"- {name} ({media_type or 'file'}) saved at {path}")
+
+    text = f"Goal: {goal}"
+    if notes:
+        text += (
+            "\n\nThe operator attached these files. Images are included above for "
+            "you to view directly; read any non-image files from disk with shell "
+            "commands when relevant:\n" + "\n".join(notes)
+        )
+    blocks.append({"type": "text", "text": text})
+    return blocks
 
 # The single tool Claude is given: run one shell command on the Mac.
 _SHELL_TOOL = {
@@ -58,10 +99,16 @@ _SYSTEM = (
 )
 
 
-def system_prompt(memory: str = "") -> str:
+def system_prompt(memory: str = "", connectors: str = "") -> str:
     """The assistant's system prompt, optionally with the operator's persistent
-    memory appended so it 'remembers' across conversations."""
-    return f"{_SYSTEM}\n\n{memory}" if memory else _SYSTEM
+    memory and available connectors appended so it 'remembers' across
+    conversations and knows which external services it can use."""
+    parts = [_SYSTEM]
+    if connectors:
+        parts.append(connectors)
+    if memory:
+        parts.append(memory)
+    return "\n\n".join(parts)
 
 
 @dataclass
@@ -110,7 +157,7 @@ class AgenticDriver(ABC):
     """The model side of the loop — provider-specific."""
 
     @abstractmethod
-    def start(self, goal: str, system: str) -> None: ...
+    def start(self, goal: str, system: str, attachments: list[dict] | None = None) -> None: ...
 
     @abstractmethod
     def next_step(self) -> ModelStep: ...
@@ -126,14 +173,16 @@ def run_agentic_loop(
     shell_runner,
     max_steps: int,
     system: str = _SYSTEM,
+    attachments: list[dict] | None = None,
 ) -> AgenticResult:
     """Drive the agent loop.
 
     ``shell_runner(command) -> ShellResult`` gates and executes a command and
     must NOT raise — a denied command comes back as a ``ShellResult`` with
-    ``gate='denied'``. The loop is bounded by ``max_steps``.
+    ``gate='denied'``. The loop is bounded by ``max_steps``. ``attachments`` are
+    files the operator shared (images shown to the model, all readable on disk).
     """
-    driver.start(goal, system)
+    driver.start(goal, system, attachments)
     transcript: list[dict] = []
     for step in range(1, max_steps + 1):
         model_step = driver.next_step()
@@ -182,7 +231,7 @@ class AnthropicAgenticDriver(AgenticDriver):
         self._system = _SYSTEM
         self._messages: list[dict] = []
 
-    def start(self, goal: str, system: str) -> None:
+    def start(self, goal: str, system: str, attachments: list[dict] | None = None) -> None:
         import anthropic  # lazy
 
         self._client = (
@@ -191,7 +240,7 @@ class AnthropicAgenticDriver(AgenticDriver):
             else anthropic.Anthropic()
         )
         self._system = system
-        self._messages = [{"role": "user", "content": f"Goal: {goal}"}]
+        self._messages = [{"role": "user", "content": build_user_content(goal, attachments)}]
 
     def next_step(self) -> ModelStep:
         message = self._client.messages.create(
@@ -234,8 +283,9 @@ class ScriptedDriver(AgenticDriver):
         self.results_log: list[list[ShellResult]] = []
         self.goal = ""
 
-    def start(self, goal: str, system: str) -> None:
+    def start(self, goal: str, system: str, attachments: list[dict] | None = None) -> None:
         self.goal = goal
+        self.attachments = attachments or []
 
     def next_step(self) -> ModelStep:
         return self._steps.pop(0) if self._steps else ModelStep(

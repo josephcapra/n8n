@@ -156,30 +156,212 @@ async function passwordLogin(ev) {
   }
 }
 
-/* ---- chat ---- */
-function addBubble(role, text) {
+/* ---- chat + attachments ---- */
+let pendingAttachments = []; // {file, kind:"image"|"file", url, name, size}
+const MAX_FILES = 10;
+const MAX_BYTES = 25 * 1024 * 1024;
+
+function humanSize(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
+
+function addBubble(role, text, atts) {
   const div = document.createElement("div");
   div.className = "bubble " + role;
-  div.textContent = text;
+  const imgs = (atts || []).filter((a) => a.kind === "image" && a.url);
+  const files = (atts || []).filter((a) => a.kind !== "image");
+  if (imgs.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "att-imgs";
+    imgs.forEach((a) => {
+      const im = document.createElement("img");
+      im.src = a.url;
+      im.alt = a.name || "image";
+      wrap.appendChild(im);
+    });
+    div.appendChild(wrap);
+  }
+  files.forEach((a) => {
+    const f = document.createElement("div");
+    f.className = "att-file";
+    f.textContent = "📎 " + (a.name || "file");
+    div.appendChild(f);
+  });
+  if (text) {
+    const t = document.createElement("div");
+    t.textContent = text;
+    div.appendChild(t);
+  }
   $("messages").appendChild(div);
   $("messages").scrollTop = $("messages").scrollHeight;
 }
+
+function addFiles(fileList) {
+  for (const file of fileList) {
+    if (pendingAttachments.length >= MAX_FILES) {
+      addBubble("sys", "Attachment limit reached (" + MAX_FILES + ").");
+      break;
+    }
+    if (file.size > MAX_BYTES) {
+      addBubble("sys", '"' + file.name + '" is too large (max 25 MB).');
+      continue;
+    }
+    const kind = (file.type || "").startsWith("image/") ? "image" : "file";
+    pendingAttachments.push({
+      file, kind, name: file.name || "file", size: file.size,
+      url: kind === "image" ? URL.createObjectURL(file) : null,
+    });
+  }
+  renderTray();
+}
+
+function removeAttachment(i) {
+  const a = pendingAttachments[i];
+  if (a && a.url) URL.revokeObjectURL(a.url);
+  pendingAttachments.splice(i, 1);
+  renderTray();
+}
+
+function renderTray() {
+  const tray = $("attachTray");
+  tray.innerHTML = "";
+  if (!pendingAttachments.length) {
+    tray.classList.add("hidden");
+    return;
+  }
+  tray.classList.remove("hidden");
+  pendingAttachments.forEach((a, i) => {
+    const item = document.createElement("div");
+    item.className = "attach-item";
+    if (a.kind === "image" && a.url) {
+      const im = document.createElement("img");
+      im.src = a.url;
+      item.appendChild(im);
+    } else {
+      const chip = document.createElement("div");
+      chip.className = "fchip";
+      const fn = document.createElement("span");
+      fn.className = "fname";
+      fn.textContent = a.name;
+      const fm = document.createElement("span");
+      fm.className = "fmeta";
+      fm.textContent = humanSize(a.size);
+      chip.append(fn, fm);
+      item.appendChild(chip);
+    }
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "rm";
+    rm.textContent = "×";
+    rm.onclick = () => removeAttachment(i);
+    item.appendChild(rm);
+    tray.appendChild(item);
+  });
+}
+
+async function uploadAttachments() {
+  const fd = new FormData();
+  pendingAttachments.forEach((a) => fd.append("files", a.file));
+  const headers = {};
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch("/upload", { method: "POST", headers, body: fd });
+  if (res.status === 401) {
+    logout();
+    throw new Error("session expired — sign in again");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  return (await res.json()).attachments;
+}
+
 async function sendMessage(ev) {
   ev.preventDefault();
   const input = $("chatInput");
-  const text = input.value.trim();
-  if (!text) return;
+  let text = input.value.trim();
+  if (!text && !pendingAttachments.length) return;
+
+  const bubbleAtts = pendingAttachments.map((a) => ({
+    kind: a.kind, url: a.url, name: a.name,
+  }));
   input.value = "";
-  addBubble("user", text);
+  addBubble("user", text, bubbleAtts);
+
+  let refs = [];
+  try {
+    if (pendingAttachments.length) {
+      refs = await uploadAttachments();
+    }
+  } catch (e) {
+    addBubble("sys", "Upload failed: " + e.message);
+    return;
+  }
+  pendingAttachments = [];
+  renderTray();
+
+  if (!text && refs.length) text = "I've attached some files — take a look.";
+
   try {
     const res = await api("POST", "/chat", {
-      body: { message: text, conversation_id: conversationId },
+      body: { message: text, conversation_id: conversationId, attachments: refs },
     });
     conversationId = res.conversation_id;
     addBubble("master", res.reply);
   } catch (e) {
     addBubble("sys", "Error: " + e.message);
   }
+}
+
+/* ---- drag & drop + paste (screenshots) ---- */
+function setupDropAndPaste() {
+  const app = $("app");
+  const zone = $("dropZone");
+  let depth = 0;
+  const hasFiles = (e) =>
+    e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+  app.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth++;
+    zone.classList.remove("hidden");
+  });
+  app.addEventListener("dragover", (e) => {
+    if (hasFiles(e)) e.preventDefault();
+  });
+  app.addEventListener("dragleave", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (--depth <= 0) {
+      depth = 0;
+      zone.classList.add("hidden");
+    }
+  });
+  app.addEventListener("drop", (e) => {
+    e.preventDefault();
+    depth = 0;
+    zone.classList.add("hidden");
+    if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+  document.addEventListener("paste", (e) => {
+    if ($("app").classList.contains("hidden")) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const files = [];
+    for (const it of items) {
+      if (it.kind === "file") {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  });
 }
 
 /* ---- approvals ---- */
@@ -383,6 +565,12 @@ function init() {
   $("registerBtn").onclick = register;
   $("logoutBtn").onclick = logout;
   $("chatForm").onsubmit = sendMessage;
+  $("attachBtn").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = (e) => {
+    addFiles(e.target.files);
+    e.target.value = "";
+  };
+  setupDropAndPaste();
   $("sessionsBtn").onclick = () => {
     $("sessionsSheet").classList.remove("hidden");
     refreshSessions();

@@ -60,10 +60,18 @@
 
     <div id="messages" class="messages"></div>
 
+    <div id="dropZone" class="dropzone hidden"><div>Drop files to attach</div></div>
+
     <form id="chatForm" class="composer">
-      <input id="chatInput" type="text" autocomplete="off"
-             placeholder="Message the manager…  ($ shell · cloud run …)" />
-      <button type="submit" class="primary">Send</button>
+      <div id="attachTray" class="attach-tray hidden"></div>
+      <div class="composer-row">
+        <input id="fileInput" type="file" multiple class="hidden"
+               accept="image/*,.pdf,.txt,.csv,.json,.md,.log,.html,.xml,.py,.js,.ts,.yaml,.yml,.docx,.xlsx" />
+        <button type="button" id="attachBtn" class="icon" title="Attach files or screenshots">&#128206;</button>
+        <input id="chatInput" type="text" autocomplete="off"
+               placeholder="Message the manager…  ($ shell · cloud run …)" />
+        <button type="submit" class="primary">Send</button>
+      </div>
     </form>
   </section>
 

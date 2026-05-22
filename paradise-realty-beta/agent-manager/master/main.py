@@ -20,11 +20,14 @@ import base64
 import hashlib
 import hmac
 import json
+import mimetypes
+import re
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -35,6 +38,7 @@ from agentmgr.approval_gate import (
     ApprovalNotProvisioned,
     canonical_message,
 )
+from agentmgr import connectors as connectors_registry
 from agentmgr.cloudrun_admin import MANAGE_OPS
 from agentmgr.config import Config, load_config
 from agentmgr.fanout_guard import FanoutGuard, FanoutLimitExceeded
@@ -66,6 +70,14 @@ from agentmgr.util import TimeoutExceeded, gen_id, poll_until
 
 log = get_logger("agentmgr.master")
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Chat attachments are saved here so the local assistant (which runs shell
+# commands on this same Mac) can read them by path; images are also shown to
+# the model directly. See /upload and agentmgr.assistant.build_user_content.
+_UPLOAD_DIR = Path.home() / ".agentmgr-uploads"
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_MAX_UPLOAD_FILES = 10
+_IMAGE_MEDIA_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
 # --- PWA bearer tokens (HMAC over expiry; no storage needed) -------------
@@ -243,6 +255,42 @@ def build_app(config: Config | None = None) -> FastAPI:
     def chat(req: ChatRequest) -> ChatResponse:
         return run_command(app, req)
 
+    @app.post("/upload", dependencies=[Depends(require_auth)])
+    async def upload(files: list[UploadFile] = File(...)) -> dict:
+        """Receive chat attachments (files + screenshots) and save them to disk
+        so the assistant can read them; return typed refs to pass back to /chat.
+        Images are flagged so the model can view them directly."""
+        if len(files) > _MAX_UPLOAD_FILES:
+            raise HTTPException(
+                status_code=413, detail=f"too many files (max {_MAX_UPLOAD_FILES})"
+            )
+        dest_dir = _UPLOAD_DIR / time.strftime("%Y%m%d")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        saved = []
+        for f in files:
+            data = await f.read()
+            if len(data) > _MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"{f.filename!r} exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                )
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", f.filename or "file")[:100] or "file"
+            fid = uuid.uuid4().hex[:12]
+            path = dest_dir / f"{fid}-{safe}"
+            path.write_bytes(data)
+            media_type = (
+                f.content_type
+                or mimetypes.guess_type(safe)[0]
+                or "application/octet-stream"
+            )
+            kind = "image" if media_type in _IMAGE_MEDIA_TYPES else "file"
+            saved.append({
+                "id": fid, "filename": f.filename or safe, "path": str(path),
+                "kind": kind, "media_type": media_type, "size": len(data),
+            })
+        log.info("received chat attachments", extra={"count": len(saved)})
+        return {"attachments": saved}
+
     @app.get("/cost", dependencies=[Depends(require_auth)])
     def cost() -> dict:
         """Cumulative LLM spend and the per-command budget ceiling."""
@@ -313,6 +361,40 @@ def build_app(config: Config | None = None) -> FastAPI:
     @app.delete("/memory", dependencies=[Depends(require_auth)])
     def memory_clear() -> dict:
         return {"ok": True, "cleared": memory.clear()}
+
+    # --- connectors (authenticated external services) -------------------
+    @app.get("/connectors", dependencies=[Depends(require_auth)])
+    def connectors_status() -> dict:
+        """Which external services are authenticated. Never returns secrets."""
+        return {"connectors": connectors_registry.status()}
+
+    # --- security-health worker -----------------------------------------
+    @app.post("/security/health-check", dependencies=[Depends(require_auth)])
+    def security_health_check(body: dict = Body(default={})) -> dict:
+        """Dispatch the security-health worker (scans this Mac, emails a report)."""
+        payload = {"send": bool(body.get("send", True))}
+        if body.get("to"):
+            payload["to"] = body["to"]
+        task = TaskSpec(
+            agent="security-health", kind="security", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        try:
+            result = poll_until(
+                lambda: store.get_task_result(task.id),
+                timeout_s=cfg.task_timeout_s, interval_s=cfg.poll_interval_s,
+            )
+        except TimeoutExceeded as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="security scan timed out — is the Mac agent running?",
+            ) from exc
+        if result.status != TaskStatus.COMPLETED:
+            raise HTTPException(status_code=502, detail=f"scan failed: {result.error}")
+        out = result.output or {}
+        return {"grade": out.get("grade"), "counts": out.get("counts"),
+                "subject": out.get("subject"), "email": out.get("email")}
 
     # --- approvals -------------------------------------------------------
     @app.get("/approvals", dependencies=[Depends(require_auth)])
@@ -482,12 +564,19 @@ def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
     interpretation = f"{plan.summary} · command: {req.message!r}"
     log.info("planned", extra={"plan": plan.summary})
 
-    # Give the assistant its persistent memory so it "remembers" the operator.
+    # Give the assistant its persistent memory + connector awareness so it
+    # "remembers" the operator and knows which services it can reach.
     mem_block = app.state.memory.prompt_block(cfg.memory_inject_limit)
-    if mem_block:
-        for step in plan.steps:
-            if step.agent == "assistant":
+    conn_block = connectors_registry.prompt_block()
+    attachments_payload = [a.model_dump() for a in req.attachments]
+    for step in plan.steps:
+        if step.agent == "assistant":
+            if mem_block:
                 step.payload.setdefault("memory", mem_block)
+            if conn_block:
+                step.payload.setdefault("connectors", conn_block)
+            if attachments_payload:
+                step.payload["attachments"] = attachments_payload
 
     execution = _Execution(app, correlation_id, conversation_id)
     execution.run_plan(plan)
@@ -710,6 +799,18 @@ def _humanize_result(task: TaskSpec, result: TaskResult) -> str:
                 return stdout or "Done — that ran with no output."
             tail = stderr or f"It exited with code {out.get('exit_code')}."
             return f"{stdout}\n{tail}".strip()
+        if isinstance(out, dict) and "grade" in out:           # security-health
+            c = out.get("counts", {})
+            email = out.get("email") or {}
+            if email.get("sent"):
+                where = f"Report emailed to {email.get('to')}."
+            elif email:
+                where = f"Email failed: {email.get('error')}"
+            else:
+                where = "No email sent."
+            return (f"Security health: grade {out['grade']} — "
+                    f"{c.get('critical', 0)} critical, {c.get('high', 0)} high, "
+                    f"{c.get('medium', 0)} medium. {where}")
         return f"[{task.agent}] completed: {out}"              # echo/transform
     # failure
     if task.agent in _CONVERSATIONAL_AGENTS:

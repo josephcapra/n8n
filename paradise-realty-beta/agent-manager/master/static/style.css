@@ -68,9 +68,41 @@ header {
   border-bottom-left-radius: 4px; }
 .bubble.sys { align-self: center; background: none; color: var(--muted);
   font-size: 13px; }
-.composer { display: flex; gap: 8px; padding: 10px;
+.composer { display: flex; flex-direction: column; gap: 8px; padding: 10px;
   border-top: 1px solid var(--line); background: var(--panel); }
+.composer-row { display: flex; gap: 8px; align-items: center; }
 .composer input { margin: 0; }
+.composer .icon { font-size: 22px; padding: 6px 8px; flex: 0 0 auto; }
+
+/* --- attachment tray --- */
+.attach-tray { display: flex; flex-wrap: wrap; gap: 8px; }
+.attach-item { position: relative; display: flex; align-items: center; gap: 6px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 4px; max-width: 220px; }
+.attach-item img { width: 46px; height: 46px; object-fit: cover; border-radius: 7px;
+  display: block; }
+.attach-item .fchip { display: flex; flex-direction: column; padding: 2px 4px;
+  overflow: hidden; }
+.attach-item .fname { font-size: 13px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 150px; }
+.attach-item .fmeta { font-size: 11px; color: var(--muted); }
+.attach-item .rm { position: absolute; top: -7px; right: -7px; width: 20px;
+  height: 20px; border-radius: 50%; background: var(--warn); color: #1a1a1a;
+  font-size: 13px; line-height: 20px; text-align: center; cursor: pointer;
+  border: 0; padding: 0; }
+
+/* --- attachments shown inside a chat bubble --- */
+.bubble .att-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.bubble .att-imgs img { max-width: 180px; max-height: 180px; border-radius: 8px;
+  display: block; }
+.bubble .att-file { font-size: 13px; opacity: 0.92; }
+
+/* --- drag-and-drop overlay --- */
+.dropzone { position: fixed; inset: 0; z-index: 50; display: flex;
+  align-items: center; justify-content: center;
+  background: rgba(11,16,32,0.82); border: 3px dashed var(--accent); }
+.dropzone div { font-size: 20px; font-weight: 600; color: var(--accent);
+  pointer-events: none; }
 
 /* --- approval banner --- */
 .banner { background: var(--panel2); border-bottom: 1px solid var(--warn);

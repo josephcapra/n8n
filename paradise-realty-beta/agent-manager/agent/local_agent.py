@@ -204,13 +204,17 @@ def process_assistant_task(
         return
 
     memory = str(task.payload.get("memory", "") or "")
-    log.info("assistant goal started", extra={"task_id": task.id, "goal": goal})
+    connectors = str(task.payload.get("connectors", "") or "")
+    attachments = task.payload.get("attachments") or []
+    log.info("assistant goal started",
+             extra={"task_id": task.id, "goal": goal, "attachments": len(attachments)})
     runner = _assistant_shell_runner(session_mgr, gate, cfg)
     try:
         result = run_agentic_loop(
             driver or make_driver(cfg), goal,
             shell_runner=runner, max_steps=cfg.assistant_max_steps,
-            system=system_prompt(memory),
+            system=system_prompt(memory, connectors),
+            attachments=attachments,
         )
     except Exception as exc:  # noqa: BLE001 - recorded as a failed result
         log.exception("assistant loop failed", extra={"task_id": task.id})
@@ -226,6 +230,29 @@ def process_assistant_task(
         worker="assistant"))
     log.info("assistant goal finished",
              extra={"task_id": task.id, "steps": result.steps})
+
+
+def process_security_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Run the security-health scan on this Mac and (optionally) email it."""
+    from tools.security_health import run as run_security
+
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    send = bool(task.payload.get("send", True))
+    to = task.payload.get("to")
+    try:
+        result = run_security(send=send, **({"to": to} if to else {}))
+    except Exception as exc:  # noqa: BLE001
+        log.exception("security scan failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"{type(exc).__name__}: {exc}", worker="security-health"))
+        return
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=TaskStatus.COMPLETED,
+        output=result, worker="security-health"))
+    log.info("security scan finished",
+             extra={"task_id": task.id, "grade": result.get("grade")})
 
 
 def run_agent(config: Config | None = None) -> None:
@@ -244,9 +271,9 @@ def run_agent(config: Config | None = None) -> None:
         rp_id=cfg.rp_id,
         origin=cfg.origin,
     )
-    # The Mac daemon serves two local-agent agents: direct shell ('mac-shell')
-    # and the agentic assistant ('assistant').
-    handled = (cfg.local_agent_name, "assistant")
+    # The Mac daemon serves the local-agent agents: direct shell ('mac-shell'),
+    # the agentic assistant ('assistant'), and the security-health scanner.
+    handled = (cfg.local_agent_name, "assistant", "security-health")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -257,6 +284,8 @@ def run_agent(config: Config | None = None) -> None:
                 for task in store.get_pending_tasks(agent_name):
                     if task.kind == "assistant":
                         process_assistant_task(task, store, session_mgr, gate, cfg)
+                    elif task.kind == "security":
+                        process_security_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

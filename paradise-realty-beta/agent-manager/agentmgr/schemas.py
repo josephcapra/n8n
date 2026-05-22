@@ -124,9 +124,20 @@ class PasskeyCredential(BaseModel):
 
 # --- Chat API ------------------------------------------------------------
 
+class Attachment(BaseModel):
+    """A file the operator shared in chat, saved on disk by /upload."""
+    id: str = ""
+    filename: str = ""
+    path: str
+    kind: str = "file"               # "image" | "file"
+    media_type: str = ""
+    size: int = 0
+
+
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+    attachments: list[Attachment] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

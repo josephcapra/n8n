@@ -47,7 +47,7 @@ def test_loop_is_bounded_by_max_steps():
     """A driver that never stops must be cut off at max_steps."""
 
     class _Infinite:
-        def start(self, goal, system): pass
+        def start(self, goal, system, attachments=None): pass
         def next_step(self): return ModelStep(calls=[ShellCall("c", "ls")])
         def add_results(self, results): pass
 
