@@ -262,7 +262,7 @@ def build_app(config: Config | None = None) -> FastAPI:
                     else "offline"
                 )
             out.append({
-                "name": a.name, "kind": a.kind, "runtime": a.runtime,
+                "name": a.name, "title": a.title or a.name, "kind": a.kind, "runtime": a.runtime,
                 "region": a.region, "job_name": a.job_name,
                 "capabilities": list(a.capabilities), "description": a.description,
                 "sensitive_default": a.sensitive_default,

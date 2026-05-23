@@ -24,6 +24,8 @@ class AgentSpec:
     description: str
     capabilities: tuple[str, ...]
     sensitive_default: bool
+    # Optional friendly label for the GUI roster (falls back to ``name``).
+    title: str = ""
     # How the agent runs:
     #   "cloudrun-job"  — a Cloud Run Job the Master triggers
     #   "local-agent"   — a long-lived local daemon that polls for its tasks
@@ -52,6 +54,7 @@ class AgentRegistry:
                 description=a["description"],
                 capabilities=tuple(a.get("capabilities", [])),
                 sensitive_default=bool(a.get("sensitive_default", False)),
+                title=a.get("title", ""),
                 runtime=a.get("runtime", "cloudrun-job"),
                 worker_module=a.get("worker_module", ""),
             )

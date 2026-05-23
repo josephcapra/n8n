@@ -445,6 +445,56 @@ def process_taylor_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
+# --- Joe's CRM Report: office-WIDE operations report (all officelead leads) ---
+
+_JOE_CRM_ACTIONS = {
+    "email_report": ["office-leads/daily-report.js"],
+    "metrics": ["office-leads/daily-report.js", "--no-email"],
+}
+
+
+def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Joe's CRM Report — office-WIDE RealGeeks operations report (ALL officelead
+    leads, not split by agent).
+
+    'email_report' (default — what a GUI click runs) builds + emails the
+    office-wide report to Joe. 'metrics' builds it without emailing and returns
+    the structured office snapshot JSON in the result output, so other agents
+    (e.g. Taylor) can pull office-wide CRM numbers through the Master.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "joe-crm-report"
+    action = str(task.payload.get("action", "email_report")).strip()
+    if action not in _JOE_CRM_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: {sorted(_JOE_CRM_ACTIONS)}"))
+        return
+    command = "node " + " ".join(_JOE_CRM_ACTIONS[action])
+    log.info("EXECUTING Joe CRM action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
+    output["action"] = action
+    # For 'metrics', attach the latest office snapshot JSON so other agents get
+    # structured numbers (not just stdout) when they ask through the Master.
+    if action == "metrics" and output.get("exit_code") == 0:
+        try:
+            import glob
+            import json as _json
+            reports = os.path.join(cfg.crm_project_dir, "office-leads", "reports")
+            snaps = sorted(glob.glob(os.path.join(reports, "office-snapshot-*.json")))
+            if snaps:
+                output["snapshot"] = _json.loads(open(snaps[-1]).read())
+        except Exception as e:  # noqa: BLE001
+            output["snapshot_error"] = str(e)[:120]
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Joe CRM action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
 # --- jazzysphotos.com site agent -----------------------------------------
 
 # Top-level single-line string fields in src/content/settings/site.ts that
@@ -856,7 +906,7 @@ def run_agent(config: Config | None = None) -> None:
     # and the jazzysphotos.com site agent ('jazzysphotos-site').
     handled = (cfg.local_agent_name, "assistant", "security-health",
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
-               "incentive-social", "taylor")
+               "incentive-social", "taylor", "joe-crm-report")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -878,6 +928,8 @@ def run_agent(config: Config | None = None) -> None:
                         process_incentive_social_task(task, store)
                     elif task.kind == "marketing":
                         process_taylor_task(task, store, cfg)
+                    elif task.kind == "joe_crm":
+                        process_joe_crm_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

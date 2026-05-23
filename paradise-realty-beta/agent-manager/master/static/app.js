@@ -766,7 +766,7 @@ function renderAgents(data) {
     dot.title = a.status;
     const name = document.createElement("span");
     name.className = "ac-name";
-    name.textContent = a.name;
+    name.textContent = a.title || a.name;
     const grp = document.createElement("span");
     grp.className = "grp";
     grp.textContent = a.group;
@@ -842,8 +842,20 @@ function openAgentInfo(a) {
   $("agentInfoSheet").classList.remove("hidden");
 }
 
-/* ---- in-app terminal (runs via the mac-shell local agent) ---- */
+/* ---- in-app Claude Code console (runs `claude -p` via mac-shell) ---- */
 let termBusy = false;
+// One persistent Claude Code session per page load; each typed line continues it.
+let claudeSession = (crypto.randomUUID ? crypto.randomUUID()
+  : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    }));
+let claudeFresh = true;
+function newClaudeSession() {
+  claudeSession = crypto.randomUUID ? crypto.randomUUID() : claudeSession + "x";
+  claudeFresh = true;
+}
+function shq(s) { return "'" + s.replace(/'/g, "'\\''") + "'"; }
 function toggleTerminal(force) {
   const consolePane = document.querySelector(".pane.console");
   const pane = $("terminalPane");
@@ -863,15 +875,31 @@ function termWrite(text, cls) {
 async function termRun(ev) {
   if (ev) ev.preventDefault();
   if (termBusy) return;
-  const command = $("termInput").value.trim();
-  if (!command) return;
+  const input = $("termInput").value.trim();
+  if (!input) return;
   $("termInput").value = "";
-  termWrite("$ " + command, "term-cmd");
+  let command;
+  if (input.startsWith("!")) {            // power escape: run a raw shell command
+    command = input.slice(1).trim();
+    if (!command) { termBusy = false; return; }
+    termWrite("$ " + command, "term-cmd");
+  } else {                                 // default: talk to Claude Code
+    const flag = claudeFresh
+      ? "--session-id " + claudeSession
+      : "--resume " + claudeSession;
+    claudeFresh = false;
+    // Full autonomy, matching the operator's desktop terminal (~/.claude
+    // settings.json runs auto-mode + skip-dangerous-prompt). bypassPermissions
+    // is the headless equivalent: no prompts, any Bash, write anywhere — so the
+    // in-app console isn't sandboxed to agent-manager/ like acceptEdits was.
+    command = "claude -p --permission-mode bypassPermissions " + flag + " " + shq(input);
+    termWrite("▸ " + input, "term-cmd");
+  }
   termBusy = true;
   setAgentRunning("mac-shell", true);
   const pending = document.createElement("div");
   pending.className = "term-line muted";
-  pending.textContent = "⏳ running… (approve in the banner if asked)";
+  pending.textContent = "⏳ Claude Code is working…";
   $("termOutput").appendChild(pending);
   try {
     const { task_id } = await api("POST", "/terminal/exec", { body: { command } });
@@ -1173,7 +1201,7 @@ function init() {
   // in-app terminal
   $("terminalToggle").onclick = () => toggleTerminal();
   $("termClose").onclick = () => toggleTerminal(false);
-  $("termClear").onclick = () => { $("termOutput").innerHTML = ""; };
+  $("termClear").onclick = () => { $("termOutput").innerHTML = ""; newClaudeSession(); };
   $("termForm").onsubmit = termRun;
   // default to the side-by-side split on desktop; collapsed on narrow screens
   if (window.matchMedia("(min-width: 861px)").matches) toggleTerminal(true);

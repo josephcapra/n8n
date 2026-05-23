@@ -263,7 +263,75 @@
     "social",
     "email"
    ],
+   "sensitive_default": false,
+   "title": "Taylor"
+  },
+  {
+   "name": "joe-crm-report",
+   "title": "Joe's CRM Report",
+   "kind": "joe_crm",
+   "job_name": "",
+   "region": "local",
+   "runtime": "local-agent",
+   "description": "Joe's CRM Report \u2014 office-WIDE RealGeeks operations report: metrics across ALL officelead leads (NOT split by agent). Needs-attention buckets (awaiting reply, new & untouched, overdue follow-ups, going-cold backlog, unassigned), a 24h activity recap, the per-agent breakdown, and recommendations. payload.action: 'email_report' (default \u2014 build + EMAIL the office-wide report to Joe; this is what runs on click), 'metrics' (build the report and RETURN the structured office snapshot JSON so other agents \u2014 e.g. Taylor \u2014 can pull office-wide CRM numbers through the Master). Subordinate to the agent master; other agents reach it via the 'office-leads'/'metrics' capabilities. Uses the saved RealGeeks session.",
+   "capabilities": [
+    "crm",
+    "office-leads",
+    "metrics",
+    "report",
+    "operations",
+    "email"
+   ],
    "sensitive_default": false
+  },
+  {
+   "name": "joegpt",
+   "kind": "chatbot",
+   "job_name": "",
+   "region": "local",
+   "runtime": "local-agent",
+   "worker_module": "",
+   "description": "JoeGPT \u2014 the public chatbot on paradiserealtyfla.com. Lives as a Cloud Run service (service name 'joegpt') at ~/paradise-realty/joegpt/, plus the in-process HFMaster sub-agent at ~/paradise-realty/hfmaster/agents/joegpt/. Replaces the legacy Zapier webhook; logs every session, message, lead, and handoff to Firestore (joegpt_sessions / joegpt_messages / joegpt_events). payload.action: 'deploy' (runs deploy-joegpt.sh \u2014 builds + deploys to Cloud Run us-east1; SENSITIVE), 'health' (GET /healthz against the live service), 'transcript' (GET /session/{id}/transcript with the admin key from Secret Manager 'joegpt-admin-api-key'; payload.session_id), 'recent_sessions' (read joegpt_sessions ordered by last_active_at desc, default 20), 'test_chat' (POST /session/start + /chat with a scripted prompt to smoke-test the live service). Anthropic key in Secret Manager 'anthropic-api-key'. Does NOT touch ~/paradise-realty/api/.",
+   "capabilities": [
+    "chatbot",
+    "lead-capture",
+    "search",
+    "realgeeks",
+    "anthropic",
+    "firestore",
+    "cloudrun"
+   ],
+   "sensitive_default": false
+  },
+  {
+   "name": "joegpt-handoff",
+   "kind": "handoff",
+   "job_name": "",
+   "region": "local",
+   "runtime": "local-agent",
+   "description": "JoeGPT human-handoff notifier. Wraps hfmaster/agents/chat_handoff.py and the Google Chat webhooks in Secret Manager (gchat-webhook-newcon / gchat-webhook-team / gchat-webhook-joe). Fires Card V2 messages with visitor name, contact, conversation summary, and a deep-link to the JoeGPT transcript endpoint. Routing is data-driven by hfmaster/routing_rules.yaml (business-hours new-construction \u2192 newcon, urgent \u2192 joe, default \u2192 team). payload.action: 'test_routing' (dry-run resolve a {topic, time_of_day, urgency} \u2192 space without sending), 'send_test_card' (post a clearly-labeled TEST card to the resolved space; SENSITIVE \u2014 real Google Chat traffic), 'recent_handoffs' (read Firestore 'handoff_events' ordered by created_at desc). Sends to a real chat space when used, so test sparingly.",
+   "capabilities": [
+    "handoff",
+    "google-chat",
+    "notification",
+    "routing"
+   ],
+   "sensitive_default": true
+  },
+  {
+   "name": "joegpt-migrate",
+   "kind": "migrate",
+   "job_name": "",
+   "region": "local",
+   "runtime": "local-agent",
+   "description": "JoeGPT community-list migrator \u2014 replaces the old Zapier 'Master Community Landing Page' table with a Firestore collection ('community_landing_pages') that JoeGPT's search_communities tool reads. Wraps ~/paradise-realty/hfmaster/agents/joegpt/scripts/migrate_zapier_to_firestore.py. payload.action: 'preview' (read the CSV at scripts/master_communities.csv and print a row-count summary; no writes), 'migrate' (upsert every row into 'community_landing_pages' keyed by lowercased community_name; SENSITIVE \u2014 mutates Firestore), 'list_communities' (dump the current Firestore collection), 'refresh_cache' (call hfmaster/agents/joegpt/community_lookup.refresh() so the next chat picks up new rows without redeploying). One-time setup primarily, but safe to re-run when the CSV changes.",
+   "capabilities": [
+    "migration",
+    "firestore",
+    "communities",
+    "csv"
+   ],
+   "sensitive_default": true
   }
  ]
 }
