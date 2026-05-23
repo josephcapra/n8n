@@ -475,8 +475,9 @@ def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None
     log.info("EXECUTING Joe CRM action", extra={"task_id": task.id, "action": action})
     output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
     output["action"] = action
-    # For 'metrics', attach the latest office snapshot JSON so other agents get
-    # structured numbers (not just stdout) when they ask through the Master.
+    # For 'metrics', return a COMPACT office-wide summary (headline numbers + a
+    # one-line text) so other agents can consume it cleanly through the Master —
+    # not the whole snapshot.
     if action == "metrics" and output.get("exit_code") == 0:
         try:
             import glob
@@ -484,9 +485,34 @@ def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None
             reports = os.path.join(cfg.crm_project_dir, "office-leads", "reports")
             snaps = sorted(glob.glob(os.path.join(reports, "office-snapshot-*.json")))
             if snaps:
-                output["snapshot"] = _json.loads(open(snaps[-1]).read())
+                snap = _json.loads(open(snaps[-1]).read())
+                s = snap.get("summary", {}) or {}
+                b = snap.get("buckets", {}) or {}
+                backlog = s.get("backlog", {}) or {}
+                ln = lambda k: len(b.get(k) or [])
+                summary = {
+                    "generatedAt": snap.get("generatedAt"),
+                    "totalOfficeLeads": s.get("totalOfficeLeads"),
+                    "needAttention": s.get("needAttention"),
+                    "newToday": s.get("newToday"),
+                    "activeToday": s.get("activeToday"),
+                    "unassigned": s.get("unassigned"),
+                    "awaiting": ln("awaiting"),
+                    "newUntouched": ln("newUntouched"),
+                    "overdue": ln("overdueFollowups"),
+                    "cold": backlog.get("cold", 0),
+                }
+                summary["text"] = (
+                    f"Office-wide: {summary['awaiting']} awaiting reply, "
+                    f"{summary['newUntouched']} new & untouched, {summary['overdue']} overdue, "
+                    f"{summary['cold']} cold of {summary['totalOfficeLeads']} office leads; "
+                    f"{summary['needAttention']} need attention today."
+                )
+                output["summary"] = summary
+                # drop the bulky stdout so callers get the compact summary
+                output.pop("stdout", None)
         except Exception as e:  # noqa: BLE001
-            output["snapshot_error"] = str(e)[:120]
+            output["summary_error"] = str(e)[:120]
     status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
     store.put_task_result(TaskResult(
         task_id=task.id, status=status, output=output, worker=worker,
