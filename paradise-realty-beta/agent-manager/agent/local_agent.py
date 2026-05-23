@@ -549,6 +549,42 @@ def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
+# --- Scout: agent R&D / continuous improvement (advisory) -----------------
+
+_SCOUT_ACTIONS = {
+    "report": ["office-leads/agent-scout.js", "--report"],
+    "research": ["office-leads/agent-scout.js", "--no-email"],
+}
+
+
+def process_scout_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Scout — reviews all agents + logs and proposes improvements (advisory).
+
+    'report' researches and EMAILS the R&D report to the operator; 'research'
+    researches and appends to LEARNINGS.md without emailing. Never edits other
+    agents — it only proposes.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "scout"
+    action = str(task.payload.get("action", "report")).strip()
+    if action not in _SCOUT_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: {sorted(_SCOUT_ACTIONS)}"))
+        return
+    command = "node " + " ".join(_SCOUT_ACTIONS[action])
+    log.info("EXECUTING Scout action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Scout action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
 # --- jazzysphotos.com site agent -----------------------------------------
 
 # Top-level single-line string fields in src/content/settings/site.ts that
@@ -960,7 +996,7 @@ def run_agent(config: Config | None = None) -> None:
     # and the jazzysphotos.com site agent ('jazzysphotos-site').
     handled = (cfg.local_agent_name, "assistant", "security-health",
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
-               "incentive-social", "taylor", "joe-crm-report")
+               "incentive-social", "taylor", "joe-crm-report", "scout")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -984,6 +1020,8 @@ def run_agent(config: Config | None = None) -> None:
                         process_taylor_task(task, store, cfg)
                     elif task.kind == "joe_crm":
                         process_joe_crm_task(task, store, cfg)
+                    elif task.kind == "improvement":
+                        process_scout_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

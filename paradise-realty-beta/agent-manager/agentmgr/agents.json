@@ -332,6 +332,24 @@
     "csv"
    ],
    "sensitive_default": true
+  },
+  {
+   "name": "scout",
+   "title": "Scout \u2014 Agent R&D",
+   "kind": "improvement",
+   "job_name": "",
+   "region": "local",
+   "runtime": "local-agent",
+   "description": "Scout \u2014 continuous-improvement / R&D for the whole agent network. Reviews every registered agent + recent run logs + agent-master commits, then surfaces CROSS-AGENT LEARNINGS (a capability one agent has that others should adopt), proposes concrete improvements + new functions/features, flags errors/auth-expiries in the logs, and suggests new tools/APIs/models to explore \u2014 accumulating it all in a shared LEARNINGS.md so the agents build on each other over time. ADVISORY ONLY: it proposes; a human reviews + applies; it never edits other agents or code automatically. payload.action: 'report' (research + EMAIL the report to the operator), 'research' (research + append to LEARNINGS.md, no email). Auto-runs TWICE DAILY via launchd (com.paradise.scout.twicedaily, 6 AM + 6 PM); the morning run emails the report. Uses OpenAI.",
+   "capabilities": [
+    "improvement",
+    "research",
+    "learning",
+    "meta",
+    "report",
+    "email"
+   ],
+   "sensitive_default": false
   }
  ]
 }
