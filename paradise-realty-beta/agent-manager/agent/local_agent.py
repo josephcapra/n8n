@@ -24,7 +24,7 @@ from pathlib import Path
 from agentmgr.approval_gate import ApprovalDenied, ApprovalGate, ApprovalNotProvisioned
 from agentmgr.config import Config, load_config
 from agentmgr.logging_utils import get_logger, set_correlation_id
-from agentmgr.schemas import TaskResult, TaskSpec, TaskStatus
+from agentmgr.schemas import Message, TaskResult, TaskSpec, TaskStatus
 from agentmgr.session import SessionManager
 from agentmgr.state_store import StateStore, make_state_store
 
@@ -433,7 +433,22 @@ def process_taylor_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
             task_id=task.id, status=TaskStatus.FAILED, worker=worker,
             error=f"unknown Taylor action {action!r}; valid: {sorted(_TAYLOR_ACTIONS)}"))
         return
-    command = "node " + " ".join(_TAYLOR_ACTIONS[action])
+    cmd_args = list(_TAYLOR_ACTIONS[action])
+    # If Joe's CRM Report relayed office metrics, stage them + reuse the roster
+    # pull Joe just made (so Taylor doesn't re-pull the office).
+    office_metrics = task.payload.get("office_metrics")
+    if office_metrics:
+        import json as _json
+        mpath = os.path.join(cfg.crm_project_dir, "office-leads", ".office-metrics.json")
+        try:
+            with open(mpath, "w") as fh:
+                _json.dump(office_metrics, fh)
+            cmd_args += ["--office-metrics=office-leads/.office-metrics.json", "--cache", "--session"]
+            log.info("Taylor consuming office metrics relayed from Joe's CRM Report",
+                     extra={"task_id": task.id})
+        except Exception as e:  # noqa: BLE001
+            log.warning("Taylor could not stage relayed office metrics: %s", e)
+    command = "node " + " ".join(cmd_args)
     log.info("EXECUTING Taylor action", extra={"task_id": task.id, "action": action})
     output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
     output["action"] = action
@@ -511,6 +526,19 @@ def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None
                 output["summary"] = summary
                 # drop the bulky stdout so callers get the compact summary
                 output.pop("stdout", None)
+                # Optional relay THROUGH the Master to another agent (e.g. Taylor),
+                # carrying the compact office metrics so it doesn't recompute them.
+                relay_to = task.payload.get("relay_to")
+                if relay_to:
+                    store.put_message(Message(
+                        correlation_id=task.correlation_id,
+                        from_agent="joe-crm-report", to_agent=relay_to,
+                        payload={"action": task.payload.get("relay_action", "weekly_send"),
+                                 "office_metrics": summary},
+                        relay_depth=task.depth + 1,
+                    ))
+                    output["relayed_to"] = relay_to
+                    log.info("Joe CRM relayed office metrics", extra={"to": relay_to})
         except Exception as e:  # noqa: BLE001
             output["summary_error"] = str(e)[:120]
     status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
