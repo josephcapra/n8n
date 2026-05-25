@@ -85,12 +85,124 @@ def test_chat_keeps_conversation_id():
     assert second["conversation_id"] == first["conversation_id"]
 
 
+def test_target_agent_routing_helpers():
+    """Left-rail "Message" → one-step plan scoped to that agent."""
+    import pytest
+
+    from agentmgr.registry import AgentRegistry
+    from master.main import _agent_chat_mode, _plan_for_target
+
+    reg = AgentRegistry.load()
+
+    # the agentic assistant holds the conversation itself ("direct")
+    assert _agent_chat_mode(reg.get("assistant")) == "direct"
+    direct = _plan_for_target(reg, "assistant", "hi there")
+    assert direct.steps[0].agent == "assistant"
+    assert direct.steps[0].payload.get("goal") == "hi there"
+    assert "agent_focus" not in direct.steps[0].payload
+
+    # a non-conversational agent is proxied through the assistant, scoped to it
+    assert _agent_chat_mode(reg.get("taylor")) == "proxy"
+    proxied = _plan_for_target(reg, "taylor", "what did you send this week?")
+    assert proxied.steps[0].agent == "assistant"
+    assert proxied.steps[0].payload.get("goal") == "what did you send this week?"
+    assert "taylor" in proxied.steps[0].payload.get("agent_focus", "")
+
+    with pytest.raises(KeyError):
+        _plan_for_target(reg, "no-such-agent", "x")
+
+
+def test_chat_unknown_target_agent_falls_back_to_planner():
+    """A bad target_agent must not break chat — it degrades to normal planning."""
+    client = TestClient(build_app(_cfg()))
+    resp = client.post(
+        "/chat",
+        json={"message": "transform: upper hello there",
+              "target_agent": "no-such-agent"},
+        headers={"Authorization": f"Bearer {_TOKEN}"},
+    )
+    assert resp.status_code == 200
+    assert "HELLO THERE" in resp.json()["reply"]
+
+
+def test_jazzysphotos_direct_chat_routing():
+    """Messaging the website agent routes a sandboxed `goal` straight to it."""
+    from agentmgr.registry import AgentRegistry
+    from master.main import _agent_chat_mode, _plan_for_target
+
+    reg = AgentRegistry.load()
+    assert _agent_chat_mode(reg.get("jazzysphotos-site")) == "direct"
+    plan = _plan_for_target(reg, "jazzysphotos-site", "make the headline bigger")
+    step = plan.steps[0]
+    assert step.agent == "jazzysphotos-site"
+    assert step.kind == "site"
+    assert step.payload == {"action": "goal", "goal": "make the headline bigger"}
+
+
+def test_jazzysphotos_sandbox_confines_and_scrubs(tmp_path, monkeypatch):
+    """The website bot can write its own repo but not the operator's home, and
+    its environment carries none of the daemon's connector secrets."""
+    import os
+
+    import pytest
+
+    from agent.local_agent import _run_command_confined
+
+    if not os.path.exists("/usr/bin/sandbox-exec"):
+        pytest.skip("sandbox-exec unavailable on this platform")
+
+    repo = tmp_path / "site"
+    repo.mkdir()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "leak-me-if-you-can")
+
+    # writes inside the repo work
+    assert _run_command_confined("echo hi > note.txt", str(repo), 30)["exit_code"] == 0
+    assert (repo / "note.txt").read_text().strip() == "hi"
+
+    # the daemon's connector secrets are scrubbed from the bot's environment
+    leak = _run_command_confined("printenv ANTHROPIC_API_KEY || true", str(repo), 30)
+    assert "leak-me-if-you-can" not in (leak["stdout"] or "")
+
+    # writing into the operator's home (outside the repo) is refused
+    probe = os.path.join(os.path.expanduser("~"), ".agentmgr_sandbox_probe_DELETEME")
+    try:
+        r = _run_command_confined(f"touch {probe}", str(repo), 30)
+        assert r["exit_code"] != 0
+        assert not os.path.exists(probe)
+    finally:
+        if os.path.exists(probe):
+            os.remove(probe)
+
+
 def test_agents_endpoint_lists_all_agents():
     client = TestClient(build_app(_cfg()))
     resp = client.get("/agents", headers={"Authorization": f"Bearer {_TOKEN}"})
     assert resp.status_code == 200
     names = {a["name"] for a in resp.json()["agents"]}
     assert {"echo-worker", "mac-shell", "cloudrun-admin", "security-health"} <= names
+
+
+def test_agents_endpoint_includes_details_and_health_fields():
+    client = TestClient(build_app(_cfg()))
+    resp = client.get("/agents", headers={"Authorization": f"Bearer {_TOKEN}"})
+    taylor = next(a for a in resp.json()["agents"] if a["name"] == "taylor")
+    assert "summary" in taylor["details"] and taylor["details"]["relays"] == ["joe-crm-report"]
+    # always present (possibly empty) so the info sheet can render Health
+    assert "last_run" in taylor and "last_report" in taylor
+
+
+def test_patch_agent_details_returns_200(monkeypatch):
+    """Regression: the update log line once used a reserved `name` extra key,
+    which raised AFTER writing the file → a 500 on every edit. Patch the file
+    write so we don't touch the real registry, and assert no 500."""
+    import master.main as mm
+    monkeypatch.setattr(mm, "update_agent_in_file",
+                        lambda name, updates, path=None: {"name": name, **updates})
+    client = TestClient(build_app(_cfg()))
+    resp = client.patch("/agents/taylor", headers={"Authorization": f"Bearer {_TOKEN}"},
+                        json={"details": {"summary": "edited", "tasks": ["a", "b"]}})
+    assert resp.status_code == 200
+    assert resp.json()["updated"]["details"]["summary"] == "edited"
 
 
 # --- desktop password login ----------------------------------------------

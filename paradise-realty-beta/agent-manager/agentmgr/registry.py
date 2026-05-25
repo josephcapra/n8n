@@ -9,7 +9,7 @@ No rearchitecting, no code change in the Master.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _DEFAULT_REGISTRY = Path(__file__).with_name("agents.json")
@@ -34,6 +34,10 @@ class AgentSpec:
     # For cloudrun-job agents: the Python module exposing run_task() — used by
     # the local job runner, and as the Job's `python -m <module>` entrypoint.
     worker_module: str = ""
+    # Rich, structured info for the GUI info sheet (the "ⓘ" button). Optional,
+    # data-only. Keys: summary, tasks[], purpose, automation, talks_to[],
+    # security, recent[]. ``recent`` is auto-refreshed by Scout from git history.
+    details: dict = field(default_factory=dict)
 
 
 class AgentRegistry:
@@ -57,6 +61,7 @@ class AgentRegistry:
                 title=a.get("title", ""),
                 runtime=a.get("runtime", "cloudrun-job"),
                 worker_module=a.get("worker_module", ""),
+                details=a.get("details", {}) or {},
             )
             for a in data["agents"]
         ]
@@ -92,3 +97,45 @@ def append_agent_to_file(entry: dict, path: Path | None = None) -> None:
         raise ValueError(f"agent {entry['name']!r} already in registry")
     data.setdefault("agents", []).append(entry)
     p.write_text(json.dumps(data, indent=2) + "\n")
+
+
+# Fields the PATCH /agents/{name} endpoint is allowed to change. Identity-bearing
+# fields (name, kind, runtime, job_name, region, worker_module) stay immutable —
+# changing them would silently break callers + the worker contract. ``details``
+# is the structured info-sheet content; it's merged key-by-key (see below).
+_EDITABLE_AGENT_FIELDS = ("title", "description", "details")
+
+
+def update_agent_in_file(
+    name: str, updates: dict, path: Path | None = None
+) -> dict:
+    """Patch an existing agent entry in ``agents.json`` (rename / re-describe).
+
+    Only the safe display fields in ``_EDITABLE_AGENT_FIELDS`` are honoured —
+    other keys are silently ignored so a stale frontend can't rewrite an
+    agent's identity. Returns the updated entry. Callers should reload the
+    registry after so live requests see the change.
+    """
+    p = path or _DEFAULT_REGISTRY
+    data = json.loads(p.read_text())
+    agents = data.get("agents", [])
+    for entry in agents:
+        if entry.get("name") == name:
+            applied = False
+            for k in _EDITABLE_AGENT_FIELDS:
+                if k not in updates:
+                    continue
+                if k == "details" and isinstance(updates[k], dict):
+                    # Merge so editing one section keeps the others (and the
+                    # Scout-maintained ``recent``) intact.
+                    merged = dict(entry.get("details") or {})
+                    merged.update(updates[k])
+                    entry["details"] = merged
+                else:
+                    entry[k] = updates[k]
+                applied = True
+            if not applied:
+                raise ValueError("no editable fields provided")
+            p.write_text(json.dumps(data, indent=2) + "\n")
+            return entry
+    raise KeyError(f"no registered agent named {name!r}")

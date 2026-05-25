@@ -52,7 +52,7 @@
       <strong>Command Center</strong>
       <span id="masterStatus" class="master-status"></span>
       <div class="spacer"></div>
-      <button id="terminalToggle" class="icon" title="Terminal">&#9000;</button>
+      <button id="terminalToggle" class="icon" title="Claude Code">&#129302;</button>
       <button id="rosterToggle" class="icon only-mobile" title="Agents">&#128101;</button>
       <button id="logoutBtn" class="icon" title="Sign out">&#9211;</button>
     </header>
@@ -62,6 +62,7 @@
       <aside id="rosterPane" class="pane roster">
         <div class="pane-head">AGENTS <span id="agentCount" class="badge">·</span>
           <div class="spacer"></div>
+          <button id="relayBtn" class="icon mini" title="Relay graph — who talks to whom">&#128279;</button>
           <button id="refreshAgents" class="icon mini" title="Refresh">&#8635;</button>
         </div>
         <div id="agentList" class="agent-list"></div>
@@ -73,6 +74,14 @@
         <!-- LEFT: chat -->
         <div class="chat-col">
           <div id="approvalBanner" class="banner hidden"></div>
+          <!-- when chatting with one agent (left-rail “Message”), this bar names
+               the peer and offers a one-click return to the Manager -->
+          <div id="chatContext" class="chat-context hidden">
+            <button id="chatBack" class="chat-back" title="Back to the Manager">&larr; Manager</button>
+            <span class="cc-peer-dot"></span>
+            <strong id="chatPeer" class="cc-peer"></strong>
+            <span id="chatPeerMode" class="cc-mode muted small"></span>
+          </div>
           <div id="messages" class="messages"></div>
           <div id="dropZone" class="dropzone hidden"><div>Drop files to attach</div></div>
           <form id="chatForm" class="composer">
@@ -92,18 +101,18 @@
         <!-- RIGHT: in-app terminal (side-by-side split), runs via mac-shell -->
         <section id="terminalPane" class="terminal hidden">
           <div class="term-head">
-            <span class="term-title">&#9000; Terminal</span>
-            <span class="term-sub muted small">mac-shell &middot; gated by session/approval</span>
+            <span class="term-title">&#129302; Claude Code</span>
+            <span class="term-sub muted small">claude -p &middot; persistent session &middot; prefix ! for raw shell</span>
             <div class="spacer"></div>
             <button id="termClear" class="icon mini" title="Clear">&#9003;</button>
             <button id="termClose" class="icon mini" title="Close">&times;</button>
           </div>
           <div id="termOutput" class="term-output"></div>
           <form id="termForm" class="term-input-row">
-            <span class="term-prompt">$</span>
+            <span class="term-prompt">&#9656;</span>
             <input id="termInput" type="text" autocomplete="off" autocapitalize="off"
                    autocorrect="off" spellcheck="false"
-                   placeholder="Type a command, press Enter (e.g. ls ~/paradise-crm-audit)" />
+                   placeholder="Ask Claude Code…  (prefix ! to run a raw shell command)" />
           </form>
         </section>
       </main>
@@ -121,6 +130,11 @@
             <span id="secLight" class="light unknown"></span>
             <div class="ltext"><div class="lname">Security <span class="chevron">&rsaquo;</span></div>
               <div id="secMsg" class="lmsg muted">checking…</div></div>
+          </div>
+          <div id="siteRow" class="light-row clickable" title="Click to see website health details">
+            <span id="siteLight" class="light unknown"></span>
+            <div class="ltext"><div class="lname">Website <span class="chevron">&rsaquo;</span></div>
+              <div id="siteMsg" class="lmsg muted">checking…</div></div>
           </div>
         </div>
         <div class="pane-head">REPORTS
@@ -336,6 +350,19 @@
     </div>
   </div>
 
+  <!-- ============ WEBSITE HEALTH SHEET ============ -->
+  <div id="siteSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Website health</strong>
+        <div class="spacer"></div>
+        <button id="refreshSite" class="icon mini" title="Re-scan the live site">&#8635;</button>
+        <button id="closeSite" class="icon">&times;</button>
+      </header>
+      <p id="siteSummary" class="muted small">Checking…</p>
+      <div id="siteFindings"></div>
+    </div>
+  </div>
+
   <!-- ============ AGENT INFO SHEET ============ -->
   <div id="agentInfoSheet" class="sheet hidden">
     <div class="sheet-card">
@@ -344,6 +371,17 @@
         <button id="closeAgentInfo" class="icon">&times;</button>
       </header>
       <div id="aiBody"></div>
+    </div>
+  </div>
+
+  <!-- ============ RELAY GRAPH SHEET ============ -->
+  <div id="relaySheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Agent relay graph</strong>
+        <div class="spacer"></div>
+        <button id="closeRelay" class="icon">&times;</button>
+      </header>
+      <div id="relayBody"></div>
     </div>
   </div>
 

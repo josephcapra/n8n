@@ -3,7 +3,11 @@
 
 const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem("agentmgr_token") || "";
-let conversationId = localStorage.getItem("agentmgr_conversation") || null;
+// Chat is split into threads: "" is the Master; any other key is one agent you
+// picked from the left rail ("Message"). Each thread keeps its own server-side
+// conversation id + rendered bubbles, so switching peers never mixes context.
+let activeTarget = null;           // null = Master; otherwise an agent name
+const threads = {};                // key -> { conversationId, bubbles: [...] }
 let approvalsTimer = null;
 let agentsTimer = null;
 let lastCost = null;
@@ -101,17 +105,22 @@ function showLogin() {
 function showApp() {
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
+  activeTarget = null;
+  for (const k in threads) delete threads[k];
   $("messages").innerHTML = "";
+  updateChatContext();
   addBubble("sys", "Command center online. Message the manager, or pick an agent on the left.");
   refreshApprovals();
   approvalsTimer = setInterval(refreshApprovals, 6000);
   loadModels();
   loadStats().then(loadAgents);
   loadSecurity();
+  loadWebsiteHealth();
   loadReports();
   agentsTimer = setInterval(() => {
     loadStats().then(loadAgents);
     loadSecurity();
+    loadWebsiteHealth();
     loadReports();
   }, 12000);
 }
@@ -182,7 +191,79 @@ function humanSize(n) {
   return (n / 1024 / 1024).toFixed(1) + " MB";
 }
 
-function addBubble(role, text, atts) {
+/* ---- chat threads (Master + one per messaged agent) ---- */
+function threadKey() { return activeTarget || ""; }
+function curThread() {
+  const k = threadKey();
+  if (!threads[k]) {
+    threads[k] = {
+      conversationId: k === "" ? (localStorage.getItem("agentmgr_conversation") || null) : null,
+      bubbles: [],
+    };
+  }
+  return threads[k];
+}
+// Re-render the message pane from the active thread's stored bubbles.
+function renderThread() {
+  const m = $("messages");
+  m.innerHTML = "";
+  curThread().bubbles.forEach((b) => appendBubbleDom(b.role, b.text, b.atts));
+  m.scrollTop = m.scrollHeight;
+}
+
+// Which agents answer a direct chat themselves vs. via the Master (mirrors the
+// backend's _agent_chat_mode). "direct" = the agent's own loop; else proxied.
+function chatModeFor(a) {
+  const m = (a && a.details && a.details.chat_mode) || "";
+  if (m === "direct" || m === "proxy") return m;
+  return a && a.kind === "assistant" ? "direct" : "proxy";
+}
+
+// Switch the chat to `name` (null = back to the Manager).
+function switchTarget(name) {
+  activeTarget = name || null;
+  curThread();                 // ensure it exists
+  renderThread();
+  updateChatContext();
+  highlightActiveCard();
+  $("chatInput").focus();
+}
+
+function openAgentChat(a) {
+  switchTarget(a.name);
+  // on phones the roster covers the chat — collapse it so the thread shows
+  if (window.matchMedia("(max-width: 860px)").matches)
+    $("rosterPane").classList.add("collapsed");
+}
+
+// Header bar naming the current peer + the composer placeholder.
+function updateChatContext() {
+  const bar = $("chatContext");
+  const input = $("chatInput");
+  if (!activeTarget) {
+    bar.classList.add("hidden");
+    if (input) input.placeholder = "Message the manager…  ($ shell · cloud run …)";
+    return;
+  }
+  const a = agentsByName[activeTarget] || {};
+  const title = a.title || activeTarget;
+  bar.classList.remove("hidden");
+  $("chatPeer").textContent = title;
+  $("chatPeerMode").textContent =
+    chatModeFor(a) === "direct" ? "· direct" : "· via Manager";
+  if (input) input.placeholder = "Message " + title + "…";
+}
+
+// Mark the messaged agent's card as active in the rail.
+function highlightActiveCard() {
+  const list = $("agentList");
+  if (!list) return;
+  list.querySelectorAll(".agent-card").forEach((c) =>
+    c.classList.toggle("active", c.dataset.agent === activeTarget));
+}
+
+// Append a chat bubble to the DOM (no thread bookkeeping — see addBubble).
+function appendBubbleDom(role, text, atts) {
   const div = document.createElement("div");
   div.className = "bubble " + role;
   const imgs = (atts || []).filter((a) => a.kind === "image" && a.url);
@@ -211,6 +292,13 @@ function addBubble(role, text, atts) {
   }
   $("messages").appendChild(div);
   $("messages").scrollTop = $("messages").scrollHeight;
+}
+
+// Add a bubble to the active thread: render it AND remember it so switching
+// peers and switching back restores the conversation.
+function addBubble(role, text, atts) {
+  appendBubbleDom(role, text, atts);
+  curThread().bubbles.push({ role, text, atts: atts || [] });
 }
 
 function addFiles(fileList) {
@@ -320,13 +408,23 @@ async function sendMessage(ev) {
 
   if (!text && refs.length) text = "I've attached some files — take a look.";
 
+  const th = curThread();
+  const target = activeTarget;     // capture — user may switch peers mid-request
   try {
     const res = await api("POST", "/chat", {
-      body: { message: text, conversation_id: conversationId, attachments: refs, model: selectedModel },
+      body: {
+        message: text, conversation_id: th.conversationId,
+        attachments: refs, model: selectedModel,
+        target_agent: target || undefined,
+      },
     });
-    conversationId = res.conversation_id;
-    if (conversationId) localStorage.setItem("agentmgr_conversation", conversationId);
-    addBubble("master", res.reply);
+    th.conversationId = res.conversation_id;
+    if (target === null && res.conversation_id)
+      localStorage.setItem("agentmgr_conversation", res.conversation_id);
+    // land the reply in its own thread even if the user has since switched
+    if (target === activeTarget) addBubble("master", res.reply);
+    else if (threads[target || ""]) threads[target || ""].bubbles.push(
+      { role: "master", text: res.reply, atts: [] });
   } catch (e) {
     addBubble("sys", "Error: " + e.message);
   }
@@ -675,6 +773,125 @@ function renderSecurity(s) {
   });
 }
 
+/* ---- website health light (live site checks) ---- */
+let lastSite = null;
+let sitePollTimer = null;
+
+function siteLabel(s) {
+  if (!s || s.light === "unknown") return s && s.scanning ? "scanning…" : "unavailable";
+  const g = s.grade && s.grade !== "?" ? "grade " + s.grade : s.light;
+  return s.scanning ? g + " · rescanning…" : g;
+}
+
+async function loadWebsiteHealth() {
+  try {
+    const s = await api("GET", "/site-health/status");
+    lastSite = s;
+    setLight("siteLight", s.light || "unknown", siteLabel(s));
+    // first cold scan reports unknown+scanning — poll so the light lands on a color
+    if (s.scanning && s.light === "unknown") pollSiteUntilReady();
+  } catch (e) {
+    setLight("siteLight", "unknown", "unavailable");
+  }
+}
+
+// One finding row (same shape the security sheet uses).
+function findingRow(f) {
+  const row = document.createElement("div");
+  row.className = "finding sev-" + f.severity;
+  const tag = document.createElement("span");
+  tag.className = "sev";
+  tag.textContent = (f.severity || "").toUpperCase();
+  const body = document.createElement("div");
+  body.className = "fbody";
+  const title = document.createElement("div");
+  title.className = "ftitle";
+  title.textContent = f.title || "";
+  const detail = document.createElement("div");
+  detail.className = "fdetail";
+  detail.textContent = f.detail || "";
+  body.append(title, detail);
+  if (f.fix) {
+    const fix = document.createElement("div");
+    fix.className = "ffix";
+    fix.textContent = "Fix: " + f.fix;
+    body.appendChild(fix);
+  }
+  row.append(tag, body);
+  return row;
+}
+
+async function openSiteSheet(forceFresh) {
+  $("siteSheet").classList.remove("hidden");
+  try {
+    lastSite = await api("GET", "/site-health/status" + (forceFresh ? "?fresh=1" : ""));
+    setLight("siteLight", lastSite.light || "unknown", siteLabel(lastSite));
+  } catch (e) {
+    $("siteSummary").textContent = "Couldn’t check the site: " + e.message;
+    $("siteFindings").innerHTML = "";
+    return;
+  }
+  renderWebsiteHealth(lastSite);
+  // cold cache or a forced re-scan runs in the background (~15s) — poll for it
+  if (lastSite.scanning) pollSiteUntilReady();
+}
+
+function pollSiteUntilReady() {
+  clearTimeout(sitePollTimer);
+  const tick = async () => {
+    let s;
+    try { s = await api("GET", "/site-health/status"); } catch (e) { return; }
+    lastSite = s;
+    setLight("siteLight", s.light || "unknown", siteLabel(s));
+    if (!$("siteSheet").classList.contains("hidden")) renderWebsiteHealth(s);
+    if (s.scanning) sitePollTimer = setTimeout(tick, 2000);
+  };
+  sitePollTimer = setTimeout(tick, 2000);
+}
+
+function renderWebsiteHealth(s) {
+  const summary = $("siteSummary");
+  const list = $("siteFindings");
+  list.innerHTML = "";
+  if (!s || (s.light === "unknown" && !s.scanning)) {
+    summary.textContent = "Website check unavailable" + (s && s.error ? ": " + s.error : ".");
+    return;
+  }
+  if (s.scanning && !(s.findings || []).length) {
+    summary.textContent = "Scanning the live site… (~15s — the sitemap is slow to generate)";
+    return;
+  }
+  const c = s.counts || {};
+  const issues = (c.critical || 0) + (c.high || 0) + (c.medium || 0) + (c.low || 0);
+  const host = (s.checked || "").replace(/^https?:\/\//, "");
+  summary.textContent = "Grade " + (s.grade || "?") + " — " +
+    (issues ? (c.critical || 0) + " critical · " + (c.high || 0) + " high · " +
+      (c.medium || 0) + " medium · " + (c.low || 0) + " low" : "all checks passing ✅") +
+    (host ? " · " + host : "") + (s.scanning ? " · rescanning…" : "");
+  const order = { critical: 0, high: 1, medium: 2, low: 3, ok: 4 };
+  const all = s.findings || [];
+  const issuesList = all.filter((f) => f.severity !== "ok")
+    .sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+  if (!issuesList.length) {
+    const ok = document.createElement("p");
+    ok.className = "muted small";
+    ok.style.padding = "0 4px";
+    ok.textContent = "No issues found — the website is healthy. ✅";
+    list.appendChild(ok);
+  } else {
+    issuesList.forEach((f) => list.appendChild(findingRow(f)));
+  }
+  // a quiet line listing what passed, for reassurance
+  const passed = all.filter((f) => f.severity === "ok").map((f) => f.title);
+  if (passed.length) {
+    const p = document.createElement("p");
+    p.className = "muted small";
+    p.style.padding = "8px 4px 0";
+    p.textContent = "Passing: " + passed.join(" · ");
+    list.appendChild(p);
+  }
+}
+
 async function loadAgents() {
   let data;
   try {
@@ -731,7 +948,14 @@ async function openReport(id, title) {
   }
 }
 
+// Agents with a special primary verb; everything else's big button is chat.
+const _SPECIAL_ACTION_AGENTS = ["mac-shell", "cloudrun-admin", "security-health"];
+// True when the card's big button already opens the agent chat.
+function cardActionIsChat(a) {
+  return a.group !== "cloud" && !_SPECIAL_ACTION_AGENTS.includes(a.name);
+}
 function agentActionLabel(a) {
+  if (a.name === "joegpt") return "📊 Chats & health";
   if (a.group === "cloud") return "▶ Run job";
   if (a.name === "mac-shell") return "⌨︎ Command";
   if (a.name === "cloudrun-admin") return "☁︎ List jobs";
@@ -739,11 +963,12 @@ function agentActionLabel(a) {
   return "💬 Message";
 }
 function agentAction(a) {
+  if (a.name === "joegpt") return openAgentInfo(a);   // chatbot monitor: health + Q&A
   if (a.group === "cloud") return runJobByName(a.job_name || a.name, a.name);
   if (a.name === "mac-shell") return focusChat("$ ");
   if (a.name === "cloudrun-admin") return quickSend("cloud run, list jobs");
   if (a.name === "security-health") return quickSend("run a security health check");
-  return focusChat("");
+  return openAgentChat(a);   // "💬 Message" → scope the chat to this one agent
 }
 
 function renderAgents(data) {
@@ -767,6 +992,14 @@ function renderAgents(data) {
     const name = document.createElement("span");
     name.className = "ac-name";
     name.textContent = a.title || a.name;
+    name.title = "Click pencil or double-click to rename";
+    name.ondblclick = (e) => { e.stopPropagation(); inlineRenameCard(name, a); };
+    // ✎ pencil — discoverable rename affordance (same path as double-click)
+    const edit = document.createElement("button");
+    edit.className = "ac-edit";
+    edit.title = "Rename this agent";
+    edit.innerHTML = "&#9998;";
+    edit.onclick = (e) => { e.stopPropagation(); inlineRenameCard(name, a); };
     const grp = document.createElement("span");
     grp.className = "grp";
     grp.textContent = a.group;
@@ -776,7 +1009,18 @@ function renderAgents(data) {
     info.title = "What this agent does";
     info.innerHTML = "&#9432;";
     info.onclick = (e) => { e.stopPropagation(); openAgentInfo(a); };
-    top.append(dot, name, grp, info);
+    top.append(dot, name, edit, grp);
+    // 💬 chat — only where the big button is something else (cloud run, shell,
+    // …); agents whose primary action is already "Message" don't need it.
+    if (!cardActionIsChat(a)) {
+      const chat = document.createElement("button");
+      chat.className = "ac-chat";
+      chat.title = "Chat with this agent";
+      chat.innerHTML = "&#128172;";
+      chat.onclick = (e) => { e.stopPropagation(); openAgentChat(a); };
+      top.append(chat);
+    }
+    top.append(info);
 
     const desc = document.createElement("div");
     desc.className = "ac-desc";
@@ -803,6 +1047,8 @@ function renderAgents(data) {
     list.appendChild(card);
   });
   renderStats(agents);
+  highlightActiveCard();     // cards were rebuilt — restore the active marker
+  updateChatContext();       // and refresh the peer's title if it changed
 }
 
 /* ---- progress bar: mark an agent busy while it has in-flight work ---- */
@@ -816,30 +1062,498 @@ function setAgentRunning(name, on) {
   if (card) card.classList.toggle("running", on);
 }
 
-/* ---- agent info modal: full description + details ---- */
+/* ---- rename an agent (shared by the card double-click + the info modal) ---- */
+// PATCH the display title, update the local cache, refresh the rail. The
+// canonical `name` (worker id) never changes — only the label the operator sees.
+async function saveAgentRename(a, title) {
+  const res = await api("PATCH", "/agents/" + encodeURIComponent(a.name),
+    { body: { title } });
+  const updated = Object.assign({}, a, { title: res.updated.title });
+  agentsByName[a.name] = updated;
+  addBubble("sys", "Renamed “" + (a.title || a.name) + "” → “" + title + "”.");
+  await loadAgents();          // refresh the left rail with the new label
+  return updated;
+}
+
+// Double-clicking a card's name swaps it for an inline input — Enter saves,
+// Escape/blur cancels. Keeps rename right where the user reads the name.
+function inlineRenameCard(nameEl, a) {
+  const current = a.title || a.name;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "ac-name-input";
+  input.value = current;
+  input.maxLength = 60;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(0, current.length);
+  let settled = false;
+  const restore = () => { if (!settled) { settled = true; input.replaceWith(nameEl); } };
+  input.onblur = restore;
+  input.onkeydown = async (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") { restore(); return; }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const title = input.value.trim();
+    if (!title || title === current) { restore(); return; }
+    settled = true;                 // stop blur from also firing
+    input.disabled = true;
+    try {
+      await saveAgentRename(a, title);   // loadAgents() re-renders the rail
+    } catch (err) {
+      addBubble("sys", "Rename failed: " + err.message);
+      input.replaceWith(nameEl);
+    }
+  };
+}
+
+/* ---- agent info modal: full description + details + inline rename ---- */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
+
+// Friendly labels for the right-side value cells.
+function runtimeLabel(rt) {
+  return ({
+    "local-agent": "local-agent · on this Mac",
+    "master-inline": "master-inline · runs in the Master",
+    "cloudrun-job": "cloudrun-job · Cloud Run",
+  })[rt] || rt || "—";
+}
+function statusLabel(s, group) {
+  if (s === "online") return "online · ready";
+  if (s === "ready") return "ready";
+  if (s === "deployed") return "deployed";
+  if (s === "offline") return group === "cloud" ? "offline · job not deployed" : "offline";
+  if (s === "unknown") return "unknown · couldn't reach Cloud Run";
+  return s || "—";
+}
+
+/* ---- JoeGPT customer chats (info sheet) ---- */
+const _chatStyles = '<style>'
+  + '.chat-row{display:flex;gap:10px;align-items:center;padding:8px 6px;border-top:1px solid rgba(255,255,255,.08);cursor:pointer}'
+  + '.chat-row:hover{background:rgba(255,255,255,.05)}'
+  + '.chat-when{font-size:12px;color:#8a96a3;min-width:62px}'
+  + '.chat-meta{flex:1;font-size:13px}.chat-open{font-size:12px;color:#58a6ff}'
+  + '.chat-actions{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}'
+  + '.chat-actions button,.chat-actions a{font:inherit;font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;padding:5px 11px;border-radius:7px;text-decoration:none}'
+  + '.chat-share{background:#1f8a8a!important;border-color:#1f8a8a!important;color:#fff!important}'
+  + '.chat-transcript{max-height:360px;overflow-y:auto;padding-right:4px}'
+  + '.ct-msg{margin:9px 0}.ct-who{font-size:11px;color:#8a96a3;margin-bottom:2px}'
+  + '.ct-bub{padding:8px 11px;border-radius:10px;display:inline-block;max-width:90%;font-size:14px}'
+  + '.ct-user{text-align:right}.ct-user .ct-bub{background:#1f8a8a;color:#fff}'
+  + '.ct-assistant .ct-bub{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}'
+  + '</style>';
+
+function _shortUrl(u){ try { const x = new URL(u); return x.pathname === "/" ? x.hostname : x.pathname; } catch (e){ return u || ""; } }
+function _mdLite(s){
+  s = escapeHtml(s || "");
+  s = s.replace(/!\[[^\]]*\]\([^)]+\)/g, "");
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  s = s.replace(/^#{1,6}\s*(.+)$/gm, "<b>$1</b>");
+  return s.replace(/\n/g, "<br>");
+}
+function _chatRow(s){
+  const when = timeAgo(s.last_active_at || s.created_at) || "";
+  // The visitor's question is the useful label; fall back to a msg count.
+  const meta = s.preview
+    ? escapeHtml(s.preview)
+    : ((s.total_messages || 0) + " msgs" + (s.page_url ? " · " + escapeHtml(_shortUrl(s.page_url)) : ""));
+  return '<div class="chat-row" data-sid="' + escapeHtml(s.session_id) + '">'
+    + '<span class="chat-when">' + escapeHtml(when) + '</span>'
+    + '<span class="chat-meta">' + meta + '</span>'
+    + '<span class="chat-open">View ›</span></div>';
+}
+async function loadAgentChats(){
+  const box = document.getElementById("aiChats"); if (!box) return;
+  box.innerHTML = '<span class="muted">Loading recent conversations…</span>';
+  try {
+    const d = await api("GET", "/agents/joegpt/chats?limit=25");
+    const list = d.sessions || [];
+    if (!list.length){ box.innerHTML = '<span class="muted">No customer conversations yet.</span>'; return; }
+    box.innerHTML = list.map(_chatRow).join("");
+    box.querySelectorAll(".chat-row").forEach((row) => {
+      row.onclick = () => openChatTranscript(row.getAttribute("data-sid"));
+    });
+  } catch (e){ box.innerHTML = '<span class="ai-warn">Could not load chats: ' + escapeHtml(e.message) + '</span>'; }
+}
+async function openChatTranscript(sid){
+  const box = document.getElementById("aiChats"); if (!box) return;
+  box.innerHTML = '<span class="muted">Loading transcript…</span>';
+  try {
+    const d = await api("GET", "/agents/joegpt/chats/" + encodeURIComponent(sid));
+    let h = '<div class="chat-actions"><button class="chat-back">‹ Back</button>';
+    if (d.share_url){
+      h += '<button class="chat-share" data-url="' + escapeHtml(d.share_url) + '">🔗 Copy share link</button>'
+        +  '<a class="chat-openshare" href="' + escapeHtml(d.share_url) + '" target="_blank" rel="noopener">Open ↗</a>';
+    }
+    h += '</div><div class="chat-transcript">';
+    h += ((d.messages || []).map((m) => {
+      const who = m.role === "user" ? "Visitor" : "JoeGPT";
+      return '<div class="ct-msg ct-' + escapeHtml(m.role) + '"><div class="ct-who">' + who + '</div>'
+        + '<div class="ct-bub">' + _mdLite(m.content) + '</div></div>';
+    }).join("")) || '<span class="muted">No messages.</span>';
+    h += '</div>';
+    box.innerHTML = h;
+    const back = box.querySelector(".chat-back"); if (back) back.onclick = loadAgentChats;
+    const sh = box.querySelector(".chat-share");
+    if (sh) sh.onclick = () => {
+      navigator.clipboard.writeText(sh.getAttribute("data-url")).then(() => {
+        const o = sh.textContent; sh.textContent = "✓ Copied!"; setTimeout(() => { sh.textContent = o; }, 1500);
+      }).catch(() => { sh.textContent = "Copy failed — select & copy manually"; });
+    };
+  } catch (e){
+    box.innerHTML = '<span class="ai-warn">Could not load transcript: ' + escapeHtml(e.message) + '</span> '
+      + '<button class="chat-back">‹ Back</button>';
+    const back = box.querySelector(".chat-back"); if (back) back.onclick = loadAgentChats;
+  }
+}
+
 function openAgentInfo(a) {
-  $("aiName").textContent = a.name;
-  const rows = [
-    ["Status", a.status],
-    ["Runtime", a.runtime],
-    ["Kind", a.kind || "—"],
-    ["Group", a.group],
-    ["Capabilities", (a.capabilities || []).join(", ") || "—"],
-    ["Sensitive", a.sensitive_default ? "yes — needs your approval to run" : "no"],
-  ];
-  if (a.job_name) rows.push(["Cloud job", a.job_name]);
-  $("aiBody").innerHTML =
-    '<p class="ai-desc">' + escapeHtml(a.description || "No description provided.") + "</p>" +
-    '<div class="ai-rows">' +
-    rows.map(([k, v]) =>
-      '<div class="ai-row"><span class="ai-k">' + k + '</span><span class="ai-v">' +
-      escapeHtml(String(v)) + "</span></div>").join("") +
-    "</div>";
+  renderAgentInfo(a);
   $("agentInfoSheet").classList.remove("hidden");
+}
+
+// A labeled section: <h4> + arbitrary HTML body. Returns "" when empty so we
+// don't render blank headers for agents missing that detail.
+function aiSection(label, bodyHtml) {
+  if (!bodyHtml) return "";
+  return '<section class="ai-sec"><h4 class="ai-sec-h">' + escapeHtml(label) +
+    '</h4><div class="ai-sec-b">' + bodyHtml + "</div></section>";
+}
+// Render an array of strings as a bulleted list (escaped). "" if empty.
+function aiList(items) {
+  const arr = (items || []).filter((x) => x && String(x).trim());
+  if (!arr.length) return "";
+  return '<ul class="ai-ul">' +
+    arr.map((x) => "<li>" + escapeHtml(x) + "</li>").join("") + "</ul>";
+}
+
+// Compact "3h ago" from an ISO-8601 timestamp (now_iso() on the backend).
+function timeAgo(iso) {
+  const t = Date.parse(iso || "");
+  if (isNaN(t)) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
+// Plain-English health: live status pill + last actual RUN (from TaskResults)
+// + last emailed/saved REPORT, whichever exist.
+function healthHtml(a) {
+  const cls = { online: "ok", ready: "ok", deployed: "ok",
+                offline: "bad", unknown: "warn" }[a.status] || "warn";
+  let html = '<span class="ai-health ' + cls + '">' +
+    escapeHtml(statusLabel(a.status, a.group)) + "</span>";
+  const lr = a.last_run || {};
+  if (lr.status) {
+    const when = timeAgo(lr.finished_at);
+    html += '<div class="muted small ai-lastrep">Last run: ' +
+      (lr.ok ? "✅ " : "❌ ") + escapeHtml(lr.status) +
+      (when ? " · " + when : "") + "</div>";
+  }
+  if (a.last_report)
+    html += '<div class="muted small ai-lastrep">Last report: ' +
+      escapeHtml(a.last_report) + "</div>";
+  if (!lr.status && !a.last_report)
+    html += (a.group === "cloud" && a.status === "offline")
+      ? '<div class="muted small ai-lastrep">Cloud Run job not deployed.</div>'
+      : '<div class="muted small ai-lastrep">No runs recorded yet.</div>';
+  return html;
+}
+
+// Render (or re-render) the info sheet body for agent `a`. Kept in its own
+// function so the rename-save handler can rerun it after a successful PATCH.
+function renderAgentInfo(a) {
+  const display = a.title || a.name;
+  // Header — title (display name) + small pencil that swaps to an input.
+  $("aiName").innerHTML =
+    '<span id="aiTitle" class="ai-title-text">' + escapeHtml(display) + "</span>" +
+    ' <button id="aiRenameBtn" class="ai-rename-btn" title="Rename agent">&#9998;</button>' +
+    ' <button id="aiEditBtn" class="ai-edit-details" title="Edit this info sheet">Edit details</button>';
+
+  const d = a.details || {};
+  const caps = a.capabilities || [];
+  const capsHtml = caps.length
+    ? '<div class="ai-chips">' +
+        caps.map((c) => '<span class="ai-chip">' + escapeHtml(c) + "</span>").join("") +
+      "</div>"
+    : "";
+
+  // Security: authored note + the sensitive flag, kept together.
+  let secHtml = d.security ? "<p>" + escapeHtml(d.security) + "</p>" : "";
+  secHtml += a.sensitive_default
+    ? '<p class="ai-warn">⚠ Sensitive — needs your one-click approval to run.</p>'
+    : (d.security ? "" : "<p>Not flagged sensitive.</p>");
+
+  // Collapsible technical footer — the old identity rows, out of the way.
+  const rows = [
+    ["Runtime", escapeHtml(runtimeLabel(a.runtime))],
+    ["Kind", escapeHtml(a.kind || "—")],
+    ["Group", escapeHtml(a.group || "—")],
+    ["Region", escapeHtml(a.region || "—")],
+  ];
+  if (a.job_name) rows.push(["Cloud job", escapeHtml(a.job_name)]);
+  if (a.worker_module) rows.push(["Worker module", escapeHtml(a.worker_module)]);
+  rows.push(["Identifier",
+    '<code class="ai-id">' + escapeHtml(a.name) + "</code>" +
+    (a.title && a.title !== a.name
+      ? ' <span class="muted small">· stays the same after rename</span>'
+      : "")]);
+  const techRows = '<div class="ai-rows">' +
+    rows.map(([k, v]) =>
+      '<div class="ai-row"><span class="ai-k">' + k + "</span>" +
+      '<span class="ai-v">' + v + "</span></div>").join("") + "</div>";
+
+  // Summary always shows (falls back to the freeform description).
+  const summary = d.summary || a.description || "No description provided.";
+
+  $("aiBody").innerHTML =
+    '<p class="ai-summary">' + escapeHtml(summary) + "</p>" +
+    ((a.name === "joegpt")
+      ? aiSection("Live health",
+          '<div id="aiHealth" class="muted">Checking the chatbot…</div>') +
+        aiSection("Customer chats",
+          _chatStyles + '<div id="aiChats" class="muted">Loading recent conversations…</div>')
+      : "") +
+    aiSection("What it does", aiList(d.tasks)) +
+    aiSection("Purpose", d.purpose ? "<p>" + escapeHtml(d.purpose) + "</p>" : "") +
+    aiSection("Capabilities", capsHtml) +
+    aiSection("Automation & schedule",
+      d.automation ? "<p>" + escapeHtml(d.automation) + "</p>" : "") +
+    aiSection("Who it can talk to", aiList(d.talks_to)) +
+    aiSection("Health", healthHtml(a)) +
+    aiSection("Security", secHtml) +
+    aiSection("Recently added",
+      (d.recent && d.recent.length)
+        ? aiList(d.recent)
+        : '<p class="muted">No recent changes recorded.</p>') +
+    '<details class="ai-tech"><summary>Technical details</summary>' +
+      techRows + "</details>" +
+    '<p id="aiMsg" class="msg"></p>';
+
+  $("aiRenameBtn").onclick = () => startRenameAgent(a);
+  $("aiEditBtn").onclick = () => startEditDetails(a);
+  if (a.name === "joegpt") { loadChatbotHealth(); loadAgentChats(); }
+}
+
+// Live stoplight for the chatbot — proxied JoeGPT /status.json (no Firestore).
+async function loadChatbotHealth() {
+  const el = $("aiHealth");
+  if (!el) return;
+  let d;
+  try { d = await api("GET", "/agents/joegpt/health"); }
+  catch (e) { el.innerHTML = '<span class="muted">Health check failed: ' + escapeHtml(e.message) + "</span>"; return; }
+  if (!d.supported) { el.textContent = "n/a"; return; }
+  const COLOR = { green: "#2ea043", yellow: "#d4a017", red: "#da3633" };
+  const LVL = { ok: "#2ea043", warn: "#d4a017", error: "#da3633" };
+  const LABEL = { green: "All systems operational", yellow: "Degraded — needs attention", red: "Critical issue" };
+  const dot = (c) => '<span style="width:9px;height:9px;border-radius:50%;flex:0 0 auto;' +
+    "margin-top:5px;display:inline-block;background:" + c + '"></span>';
+  let html = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">' +
+    dot(COLOR[d.overall] || "#8b949e") +
+    "<strong>" + escapeHtml(LABEL[d.overall] || d.overall || "unknown") + "</strong></div>";
+  (d.checks || []).forEach((c) => {
+    html += '<div style="display:flex;gap:8px;align-items:flex-start;margin:4px 0">' +
+      dot(LVL[c.level] || "#8b949e") +
+      "<div><div>" + escapeHtml(c.name || "") + "</div>" +
+      '<div class="muted small">' + escapeHtml(c.detail || "") + "</div></div></div>";
+  });
+  if (!d.reachable) html += '<div class="muted small">' + escapeHtml(d.error || "unreachable") + "</div>";
+  if (d.checked_at) html += '<div class="muted small" style="margin-top:6px">Checked ' +
+    escapeHtml(d.checked_at) + "</div>";
+  el.innerHTML = html;
+}
+
+// The editable fields of the info sheet. "lines" = one list item per line.
+// `recent` is intentionally absent — Scout maintains it.
+const _AI_EDIT_FIELDS = [
+  { k: "summary", label: "Summary", type: "area", rows: 3 },
+  { k: "tasks", label: "What it does (one per line)", type: "lines", rows: 4 },
+  { k: "purpose", label: "Purpose", type: "area", rows: 2 },
+  { k: "automation", label: "Automation & schedule", type: "area", rows: 2 },
+  { k: "talks_to", label: "Who it can talk to (one per line)", type: "lines", rows: 3 },
+  { k: "security", label: "Security", type: "area", rows: 3 },
+];
+
+// Swap the info-sheet body into an editor for the structured details. Save
+// PATCHes only `details` (merged server-side, so `recent` is preserved).
+function startEditDetails(a) {
+  const d = a.details || {};
+  const fieldHtml = (f) => {
+    const val = f.type === "lines" ? (d[f.k] || []).join("\n") : (d[f.k] || "");
+    return '<label class="ai-ed-l">' + escapeHtml(f.label) + "</label>" +
+      '<textarea id="aied_' + f.k + '" class="ai-ed-ta" rows="' + f.rows + '">' +
+      escapeHtml(val) + "</textarea>";
+  };
+  $("aiBody").innerHTML =
+    '<div class="ai-ed">' + _AI_EDIT_FIELDS.map(fieldHtml).join("") +
+    '<p class="muted small">“Recently added” is maintained automatically by Scout.</p>' +
+    '<div class="ai-ed-actions">' +
+      '<button id="aiEdSave" class="primary">Save</button> ' +
+      '<button id="aiEdCancel" class="secondary">Cancel</button></div>' +
+    '<p id="aiMsg" class="msg"></p></div>';
+  $("aiEdCancel").onclick = () => renderAgentInfo(a);
+  $("aiEdSave").onclick = async () => {
+    const details = {};
+    for (const f of _AI_EDIT_FIELDS) {
+      const raw = $("aied_" + f.k).value;
+      details[f.k] = f.type === "lines"
+        ? raw.split("\n").map((s) => s.trim()).filter(Boolean)
+        : raw.trim();
+    }
+    $("aiEdSave").disabled = true;
+    try {
+      renderAgentInfo(await saveAgentDetails(a, details));
+    } catch (e) {
+      setMsg("aiMsg", "Save failed: " + e.message, true);
+      $("aiEdSave").disabled = false;
+    }
+  };
+}
+
+// PATCH the edited details, refresh the local cache + rail, return the merged
+// agent so the sheet can re-render.
+async function saveAgentDetails(a, details) {
+  const res = await api("PATCH", "/agents/" + encodeURIComponent(a.name),
+    { body: { details } });
+  const updated = Object.assign({}, a, { details: res.updated.details });
+  agentsByName[a.name] = updated;
+  addBubble("sys", "Updated “" + (a.title || a.name) + "” info sheet.");
+  await loadAgents();
+  return updated;
+}
+
+function startRenameAgent(a) {
+  const header = $("aiName");
+  const current = a.title || a.name;
+  header.innerHTML =
+    '<input id="aiRenameInput" type="text" class="ai-rename-input" />' +
+    ' <button id="aiRenameSave" class="primary ai-rename-save">Save</button>' +
+    ' <button id="aiRenameCancel" class="secondary ai-rename-cancel">Cancel</button>';
+  const input = $("aiRenameInput");
+  input.value = current;
+  input.maxLength = 60;
+  input.focus();
+  input.setSelectionRange(0, current.length);
+  const cancel = () => renderAgentInfo(a);
+  $("aiRenameCancel").onclick = cancel;
+  input.onkeydown = (e) => {
+    if (e.key === "Escape") cancel();
+    if (e.key === "Enter") { e.preventDefault(); $("aiRenameSave").click(); }
+  };
+  $("aiRenameSave").onclick = async () => {
+    const title = input.value.trim();
+    if (!title) return setMsg("aiMsg", "Name can't be blank.", true);
+    if (title === current) return cancel();
+    $("aiRenameSave").disabled = true;
+    try {
+      renderAgentInfo(await saveAgentRename(a, title));  // re-render sheet with new buttons
+    } catch (e) {
+      setMsg("aiMsg", "Rename failed: " + e.message, true);
+      $("aiRenameSave").disabled = false;
+    }
+  };
+}
+
+/* ---- relay graph: who talks to whom (through the Master) ---- */
+// Every agent talks only to the Master; a few RELAY work to another agent
+// through it. This draws those edges as an SVG node-link diagram.
+function openRelayGraph() {
+  renderRelayGraph();
+  $("relaySheet").classList.remove("hidden");
+}
+
+function renderRelayGraph() {
+  const agents = Object.values(agentsByName);
+  const nodes = new Set();
+  const edges = [];                 // {from, to}
+  let anyNode = null;
+  const watchers = [];
+  agents.forEach((a) => {
+    const d = a.details || {};
+    if (d.relays && d.relays.length) {
+      nodes.add(a.name);
+      d.relays.forEach((t) => { nodes.add(t); edges.push({ from: a.name, to: t }); });
+    }
+    if (d.relays_any) { nodes.add(a.name); anyNode = a.name; }
+    if (d.watches_all) { nodes.add(a.name); watchers.push(a.name); }
+  });
+  const names = [...nodes];
+  const title = (n) => {
+    const a = agentsByName[n];
+    let t = a ? (a.title || a.name) : n;
+    return t.length > 18 ? t.slice(0, 17) + "…" : t;
+  };
+
+  if (!names.length) {
+    $("relayBody").innerHTML = '<p class="muted">No inter-agent relays configured.</p>';
+    return;
+  }
+
+  const W = 460, H = 380, cx = W / 2, cy = 186, R = 128, MR = 26, NR = 7;
+  const pos = {};
+  names.forEach((n, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / names.length;
+    pos[n] = { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+  });
+
+  const parts = [];
+  // faint spoke from every participant to the Master hub
+  names.forEach((n) => {
+    parts.push('<line class="rg-spoke" x1="' + cx + '" y1="' + cy +
+      '" x2="' + pos[n].x.toFixed(1) + '" y2="' + pos[n].y.toFixed(1) + '"/>');
+  });
+  // relays_any → dashed arrow to the hub, labelled "any"
+  if (anyNode) {
+    parts.push('<line class="rg-any" marker-end="url(#rgarrow)" x1="' +
+      pos[anyNode].x.toFixed(1) + '" y1="' + pos[anyNode].y.toFixed(1) +
+      '" x2="' + cx + '" y2="' + cy + '"/>');
+  }
+  // highlighted directed relay edges, curved toward the centre
+  edges.forEach((e) => {
+    const F = pos[e.from], T = pos[e.to];
+    const mx = (F.x + T.x) / 2 + (cx - (F.x + T.x) / 2) * 0.35;
+    const my = (F.y + T.y) / 2 + (cy - (F.y + T.y) / 2) * 0.35;
+    // stop short of the target node so the arrowhead sits just outside it
+    const ang = Math.atan2(T.y - my, T.x - mx);
+    const ex = T.x - (NR + 5) * Math.cos(ang), ey = T.y - (NR + 5) * Math.sin(ang);
+    parts.push('<path class="rg-edge" marker-end="url(#rgarrow)" d="M' +
+      F.x.toFixed(1) + ',' + F.y.toFixed(1) + ' Q' + mx.toFixed(1) + ',' +
+      my.toFixed(1) + ' ' + ex.toFixed(1) + ',' + ey.toFixed(1) + '"/>');
+  });
+  // Master hub
+  parts.push('<circle class="rg-hub" cx="' + cx + '" cy="' + cy + '" r="' + MR + '"/>' +
+    '<text class="rg-hub-t" x="' + cx + '" y="' + (cy + 4) + '">Master</text>');
+  // participant nodes + labels
+  names.forEach((n) => {
+    const p = pos[n];
+    const cls = watchers.includes(n) ? "rg-node rg-watch" : "rg-node";
+    const below = p.y >= cy;
+    parts.push('<circle class="' + cls + '" cx="' + p.x.toFixed(1) + '" cy="' +
+      p.y.toFixed(1) + '" r="' + NR + '"/>');
+    parts.push('<text class="rg-label" x="' + p.x.toFixed(1) + '" y="' +
+      (p.y + (below ? 20 : -12)).toFixed(1) + '">' + escapeHtml(title(n)) + "</text>");
+  });
+
+  const legend = [];
+  if (anyNode) legend.push(escapeHtml(title(anyNode)) + " can relay to <b>any</b> agent.");
+  watchers.forEach((w) => legend.push(escapeHtml(title(w)) + " <b>watches all</b> agents (advisory)."));
+
+  $("relayBody").innerHTML =
+    '<p class="muted small rg-caption">All ' + agents.length +
+      " agents route through the Master. Highlighted arrows are agent→agent relays.</p>" +
+    '<svg viewBox="0 0 ' + W + " " + H + '" class="rg-svg" role="img" aria-label="relay graph">' +
+      '<defs><marker id="rgarrow" markerWidth="8" markerHeight="8" refX="6" refY="3" ' +
+        'orient="auto"><path d="M0,0 L6,3 L0,6 Z" class="rg-arrowhead"/></marker></defs>' +
+      parts.join("") +
+    "</svg>" +
+    (legend.length ? '<p class="muted small rg-legend">' + legend.join("<br>") + "</p>" : "");
 }
 
 /* ---- in-app Claude Code console (runs `claude -p` via mac-shell) ---- */
@@ -872,6 +1586,59 @@ function termWrite(text, cls) {
   $("termOutput").appendChild(line);
   $("termOutput").scrollTop = $("termOutput").scrollHeight;
 }
+// Render one streamed line. Raw shell output prints verbatim; Claude output is
+// NDJSON, so each line is parsed into a friendly progress line.
+// Returns the number of visible lines written (so the caller can keep the
+// "working…" spinner up until the first real line appears).
+function renderTermLine(line, isClaude) {
+  line = line.replace(/\r$/, "");
+  if (!isClaude) { termWrite(line); return 1; }
+  if (!line.trim()) return 0;
+  let ev;
+  try { ev = JSON.parse(line); }
+  catch (e) { termWrite(line, "muted"); return 1; }   // stray warning on stderr
+  return renderClaudeEvent(ev);
+}
+
+// One-line summary of a tool call, e.g. "Edit  header.html" / "Bash  npm run build".
+function summarizeTool(name, input) {
+  input = input || {};
+  const base = (p) => (p ? String(p).split("/").pop() : "");
+  switch (name) {
+    case "Read": case "Write": case "Edit": case "NotebookEdit":
+      return name + "  " + base(input.file_path || input.notebook_path);
+    case "Bash": return "Bash  " + String(input.command || "").replace(/\s+/g, " ").slice(0, 90);
+    case "Grep": return "Grep  " + (input.pattern || "");
+    case "Glob": return "Glob  " + (input.pattern || "");
+    case "Task": return "Task  " + (input.description || input.subagent_type || "");
+    case "WebFetch": return "WebFetch  " + (input.url || "");
+    case "WebSearch": return "WebSearch  " + (input.query || "");
+    default: return name;
+  }
+}
+
+// Map a stream-json event to terminal lines. system/init and tool_result
+// events are suppressed as noise; assistant text + tool calls + the final
+// result are what the operator wants to watch.
+function renderClaudeEvent(ev) {
+  if (!ev || !ev.type) return 0;
+  let n = 0;
+  if (ev.type === "assistant" && ev.message && Array.isArray(ev.message.content)) {
+    for (const b of ev.message.content) {
+      if (b.type === "text" && b.text && b.text.trim()) { termWrite(b.text.trim()); n++; }
+      else if (b.type === "tool_use") { termWrite("● " + summarizeTool(b.name, b.input), "term-tool"); n++; }
+    }
+  } else if (ev.type === "result") {
+    if (ev.is_error) { termWrite("✗ " + (ev.result || ev.error || "error"), "term-err"); n++; }
+    else {
+      if (ev.result && ev.result.trim()) { termWrite(ev.result.trim()); n++; }
+      const secs = ev.duration_ms ? " · " + (ev.duration_ms / 1000).toFixed(1) + "s" : "";
+      termWrite("✔ done" + secs, "muted"); n++;
+    }
+  }
+  return n;
+}
+
 async function termRun(ev) {
   if (ev) ev.preventDefault();
   if (termBusy) return;
@@ -892,7 +1659,10 @@ async function termRun(ev) {
     // settings.json runs auto-mode + skip-dangerous-prompt). bypassPermissions
     // is the headless equivalent: no prompts, any Bash, write anywhere — so the
     // in-app console isn't sandboxed to agent-manager/ like acceptEdits was.
-    command = "claude -p --permission-mode bypassPermissions " + flag + " " + shq(input);
+    // stream-json (needs --verbose) emits one NDJSON event per step so the UI
+    // can show the work — file reads, edits, bash — live as Claude does it.
+    command = "claude -p --permission-mode bypassPermissions"
+      + " --output-format stream-json --verbose " + flag + " " + shq(input);
     termWrite("▸ " + input, "term-cmd");
   }
   termBusy = true;
@@ -902,18 +1672,49 @@ async function termRun(ev) {
   pending.textContent = "⏳ Claude Code is working…";
   $("termOutput").appendChild(pending);
   try {
-    const { task_id } = await api("POST", "/terminal/exec", { body: { command } });
+    // Start in the operator's home dir so the console behaves like a fresh
+    // desktop terminal (the login shell expands ~). Together with
+    // bypassPermissions above, the session can cd/reach any repo — it's no
+    // longer pinned to agent-manager/. A raw `!cd …` the user types still wins.
+    const execCommand = "cd ~ && " + command;
+    const { task_id } = await api("POST", "/terminal/exec",
+      { body: { command: execCommand, stream: true } });
+    // Poll the live stream fast and render only the new tail each time. Claude
+    // output is NDJSON (one event/line) → parsed into progress; a raw `!`
+    // command is plain text → printed line-by-line.
+    const isClaude = !input.startsWith("!");
+    let consumed = 0;        // chars already pulled from the stream
+    let buffer = "";         // leftover partial line
+    let rendered = 0;        // visible lines written so far
+    const flushLines = (final) => {
+      let wrote = 0, nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        wrote += renderTermLine(buffer.slice(0, nl), isClaude);
+        buffer = buffer.slice(nl + 1);
+      }
+      if (final && buffer.trim()) { wrote += renderTermLine(buffer, isClaude); buffer = ""; }
+      // Keep the "working…" spinner until the first *visible* line — Claude's
+      // big init/rate-limit events are skipped, so don't drop it on those.
+      if (wrote && pending.parentNode) pending.remove();
+      rendered += wrote;
+    };
     const started = Date.now();
-    while (Date.now() - started < 10 * 60 * 1000) {
-      await new Promise((r) => setTimeout(r, 1200));
-      const r = await api("GET", "/terminal/result/" + encodeURIComponent(task_id));
-      if (r.ready) {
-        pending.remove();
-        const o = r.output || {};
-        if (o.stdout) termWrite(o.stdout.replace(/\s+$/, ""));
-        if (o.stderr) termWrite(o.stderr.replace(/\s+$/, ""), "term-err");
-        if (!o.stdout && !o.stderr && r.status !== "FAILED") termWrite("(no output)", "muted");
-        if (r.status === "FAILED") termWrite("✗ " + (r.error || "failed"), "term-err");
+    while (Date.now() - started < 15 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 400));
+      let r;
+      try { r = await api("GET", "/terminal/stream/" + encodeURIComponent(task_id)); }
+      catch (e) { continue; }                 // transient — keep polling
+      const out = r.output || "";
+      if (out.length > consumed) {
+        buffer += out.slice(consumed);
+        consumed = out.length;
+        flushLines(false);
+      }
+      if (r.done) {
+        flushLines(true);
+        if (pending.parentNode) pending.remove();
+        if (r.status === "FAILED" && r.error) termWrite("✗ " + r.error, "term-err");
+        else if (rendered === 0) termWrite("(no output)", "muted");
         return;
       }
     }
@@ -1163,10 +1964,14 @@ function init() {
 
   // command center
   $("refreshAgents").onclick = loadAgents;
+  $("chatBack").onclick = () => switchTarget(null);   // back to the Manager
   $("refreshReports").onclick = loadReports;
   $("secRow").onclick = () => openSecuritySheet(false);
   $("closeSecurity").onclick = () => $("securitySheet").classList.add("hidden");
   $("refreshSecurity").onclick = () => openSecuritySheet(true);
+  $("siteRow").onclick = () => openSiteSheet(false);
+  $("closeSite").onclick = () => { $("siteSheet").classList.add("hidden"); clearTimeout(sitePollTimer); };
+  $("refreshSite").onclick = () => openSiteSheet(true);
   $("newAgentBtn").onclick = openNewAgent;
   $("closeNewAgent").onclick = () => $("newAgentSheet").classList.add("hidden");
   $("newAgentForm").onsubmit = submitNewAgent;
@@ -1207,6 +2012,9 @@ function init() {
   if (window.matchMedia("(min-width: 861px)").matches) toggleTerminal(true);
   // agent info modal
   $("closeAgentInfo").onclick = () => $("agentInfoSheet").classList.add("hidden");
+  // relay graph
+  $("relayBtn").onclick = openRelayGraph;
+  $("closeRelay").onclick = () => $("relaySheet").classList.add("hidden");
 
   if (!window.PublicKeyCredential) {
     setMsg("loginMsg", "This browser has no passkey support.", true);

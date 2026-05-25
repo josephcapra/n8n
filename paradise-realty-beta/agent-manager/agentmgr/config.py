@@ -76,8 +76,8 @@ class Config:
     # --- LLM router (Phase 3) ------------------------------------------
     llm_provider: str = "mock"              # "anthropic" | "openai" | "google" | "mock"
     anthropic_model: str = "claude-opus-4-7"
-    openai_model: str = ""                  # set per your OpenAI account
-    google_model: str = ""                  # set per your Google account
+    openai_model: str = "gpt-4o-mini"        # cheap default; override per account
+    google_model: str = "gemini-2.5-flash"   # cheap default for the chat fast-path
     anthropic_api_key: str | None = None    # from Secret Manager — never in code
     openai_api_key: str | None = None
     google_api_key: str | None = None
@@ -150,8 +150,8 @@ def load_config() -> Config:
         planner=_env("AGENTMGR_PLANNER", "rule"),
         llm_provider=_env("AGENTMGR_LLM_PROVIDER", "mock"),
         anthropic_model=_env("AGENTMGR_ANTHROPIC_MODEL", "claude-opus-4-7"),
-        openai_model=_env("AGENTMGR_OPENAI_MODEL", ""),
-        google_model=_env("AGENTMGR_GOOGLE_MODEL", ""),
+        openai_model=_env("AGENTMGR_OPENAI_MODEL", "gpt-4o-mini"),
+        google_model=_env("AGENTMGR_GOOGLE_MODEL", "gemini-2.5-flash"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         openai_api_key=_env("OPENAI_API_KEY"),
         google_api_key=_env("GOOGLE_API_KEY") or _env("GEMINI_API_KEY"),

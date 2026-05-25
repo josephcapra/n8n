@@ -18,6 +18,7 @@ import re
 import shlex
 import os
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -64,6 +65,63 @@ def _run_command(command: str, cwd: str | None, timeout_s: float) -> dict:
             "stdout": "",
             "stderr": f"command timed out after {timeout_s}s",
         }
+
+
+def _run_command_streaming(
+    command: str, cwd: str | None, timeout_s: float, store, task_id: str
+) -> dict:
+    """Like ``_run_command`` but publishes stdout to the store line-by-line so a
+    polling UI sees the work as it happens (the in-app Claude Code console). The
+    in-app console runs ``claude -p --output-format stream-json``, whose NDJSON
+    events the frontend renders as progress. stderr is merged into stdout so
+    errors appear inline, terminal-style. Never raises.
+    """
+    try:
+        proc = subprocess.Popen(
+            [_LOGIN_SHELL, "-lc", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,   # interleave like a real terminal
+            text=True,
+            bufsize=1,                  # line-buffered
+            cwd=cwd or None,
+        )
+    except Exception as exc:            # spawn failure (bad cwd, shell missing…)
+        msg = f"failed to start: {exc}"
+        store.append_task_output(task_id, msg)
+        return {"command": command, "exit_code": -1, "stdout": msg, "stderr": ""}
+
+    timed_out = {"v": False}
+
+    def _kill() -> None:
+        timed_out["v"] = True
+        proc.kill()
+
+    killer = threading.Timer(timeout_s, _kill)
+    killer.start()
+    chunks: list[str] = []
+    try:
+        assert proc.stdout is not None
+        # readline() returns each line as soon as it's flushed; iterating the
+        # file object instead (`for line in proc.stdout`) read-ahead-buffers and
+        # would withhold output until EOF — defeating the live stream.
+        for line in iter(proc.stdout.readline, ""):
+            chunks.append(line)
+            store.append_task_output(task_id, line)
+        proc.wait()
+    finally:
+        killer.cancel()
+
+    full = "".join(chunks)[-_MAX_CAPTURE:]
+    if timed_out["v"]:
+        note = f"\n[timed out after {timeout_s}s]"
+        store.append_task_output(task_id, note)
+        return {"command": command, "exit_code": -1, "stdout": full + note, "stderr": ""}
+    return {
+        "command": command,
+        "exit_code": proc.returncode if proc.returncode is not None else -1,
+        "stdout": full,
+        "stderr": "",
+    }
 
 
 def _authorize(command: str, session_mgr: SessionManager, gate: ApprovalGate) -> None:
@@ -135,7 +193,12 @@ def process_task(
         return result
 
     log.info("EXECUTING shell command", extra={"task_id": task.id, "command": command})
-    output = _run_command(command, task.payload.get("cwd"), timeout_s)
+    if task.payload.get("stream"):
+        output = _run_command_streaming(
+            command, task.payload.get("cwd"), timeout_s, store, task.id
+        )
+    else:
+        output = _run_command(command, task.payload.get("cwd"), timeout_s)
     status = (
         TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
     )
@@ -228,14 +291,16 @@ def process_assistant_task(
     memory = str(task.payload.get("memory", "") or "")
     connectors = str(task.payload.get("connectors", "") or "")
     history = str(task.payload.get("history", "") or "")
+    agent_focus = str(task.payload.get("agent_focus", "") or "")
     attachments = task.payload.get("attachments") or []
     chosen = (task.payload.get("model") or "").strip()
     explicit_model = chosen if chosen and chosen != "auto" else ""
     log.info("assistant goal started",
              extra={"task_id": task.id, "goal": goal, "attachments": len(attachments),
-                    "model": explicit_model or "auto"})
+                    "model": explicit_model or "auto",
+                    "agent_focus": bool(agent_focus)})
     runner = _assistant_shell_runner(session_mgr, gate, cfg)
-    sys_prompt = system_prompt(memory, connectors, history)
+    sys_prompt = system_prompt(memory, connectors, history, agent_focus)
 
     # Cheap fast-path: trivial conversational / recall queries that need no Mac
     # tools are answered by a low-cost one-shot model (e.g. Gemini Flash) instead
@@ -601,9 +666,12 @@ _JAZZY_CATEGORIES = ("Seniors", "Prom", "Couples", "Portraits", "Other")
 _JAZZY_PUBLISHING = frozenset({"update_copy", "add_photo", "remove_photo", "publish"})
 
 _JAZZY_SYSTEM = (
-    "You are the jazzysphotos.com site agent. Every shell command you run is "
-    "already executed inside the site's git repository on the operator's Mac — "
-    "an Astro photography portfolio. Do NOT touch files outside this repo.\n\n"
+    "You are Jasmine's assistant for jazzysphotos.com — her Astro photography "
+    "portfolio. Every shell command you run is executed inside the site's git "
+    "repository, INSIDE A SANDBOX: you can only write within this repo, and the "
+    "operator's credentials and other projects are invisible to you. You have NO "
+    "access to anything unrelated to this website — don't try to reach it; such "
+    "commands are refused. Work only on the site.\n\n"
     "Layout: copy lives in src/content/settings/site.ts; portfolio photos are a "
     "Markdown file + image under src/content/portfolio[/images]; Instagram embeds "
     "in src/content/settings/instagram.json (refresh with `npm run instagram`).\n\n"
@@ -922,11 +990,151 @@ def _jazzy_commit_push(repo: str, paths: list[str], message: str, timeout: float
     return _run_command(cmd, repo, timeout)
 
 
+# macOS temp dirs the toolchain (npm/astro/git) needs to write to.
+_JAZZY_TMP_WRITABLE = (
+    "/private/tmp", "/private/var/folders", "/private/var/tmp", "/tmp",
+)
+
+
+def _jazzy_sandbox_profile(repo: str) -> str:
+    """A macOS sandbox-exec (SBPL) profile that confines a command to Jasmine's
+    website: writes only inside the repo (+ temp), and the operator's secret
+    stores are unreadable. ``(allow default)`` keeps the build/publish toolchain
+    working; the explicit denies below are what's enforced (last match wins)."""
+    repo = os.path.realpath(repo)
+    home = os.path.expanduser("~")
+    writable = [repo, *(_JAZZY_TMP_WRITABLE)]
+    write_rules = "\n  ".join(f'(subpath "{p}")' for p in writable)
+    # Secret stores + the whole Paradise/agent-manager tree are hidden from reads
+    # so the bot can never see credentials or other projects.
+    secret_paths = [
+        os.path.join(home, ".ssh"),
+        os.path.join(home, ".aws"),
+        os.path.join(home, ".config", "gcloud"),
+        os.path.join(home, ".config", "gh"),
+        os.path.join(home, ".gnupg"),
+        os.path.join(home, ".npmrc"),
+        os.path.join(home, ".sitemap-sync-browser"),
+        os.path.join(home, ".kolter-browser"),
+        "/Users/User/paradise-realty-beta",
+        "/Users/User/paradise-crm-audit",
+        "/Users/User/incentive-social-agent",
+    ]
+    read_denies = "\n  ".join(f'(subpath "{p}")' for p in secret_paths)
+    return (
+        "(version 1)\n"
+        "(allow default)\n"
+        "(deny file-write*)\n"
+        f"(allow file-write*\n  {write_rules}\n"
+        '  (literal "/dev/null") (literal "/dev/zero")\n'
+        '  (regex #"^/dev/tty") (regex #"^/dev/fd/"))\n'
+        f"(deny file-read*\n  {read_denies})\n"
+    )
+
+
+def _jazzy_clean_env(repo: str) -> dict:
+    """A minimal environment for the website bot — every connector secret the
+    daemon holds (ANTHROPIC/REALGEEKS/BING/SENDGRID/GCS/…) is dropped. Her site's
+    build + instagram refresh need no tokens, so nothing sensitive is required."""
+    return {
+        "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": os.path.expanduser("~"),               # git uses ~/.gitconfig + keychain
+        "USER": os.environ.get("USER", ""),
+        "LOGNAME": os.environ.get("LOGNAME", ""),
+        "SHELL": "/bin/zsh",
+        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
+        # npm cache lives in temp (sandbox-writable) so her repo stays clean.
+        "npm_config_cache": "/tmp/agentmgr-jazzy-npm-cache",
+        "GIT_TERMINAL_PROMPT": "0",                    # never hang on a credential prompt
+        "HOMEBREW_NO_AUTO_UPDATE": "1",
+    }
+
+
+_SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+
+
+def _run_command_confined(command: str, repo: str, timeout_s: float) -> dict:
+    """Run one command under sandbox-exec, scoped to the site repo, with a
+    scrubbed env. Fails closed: if sandbox-exec is missing, nothing runs."""
+    if not os.path.exists(_SANDBOX_EXEC):
+        return {"command": command, "exit_code": -1, "stdout": "",
+                "stderr": "sandbox unavailable — refusing to run unsandboxed"}
+    repo = os.path.realpath(repo)
+    os.makedirs("/tmp/agentmgr-jazzy-npm-cache", exist_ok=True)
+    profile = _jazzy_sandbox_profile(repo)
+    # zsh -f -c: no startup files (.zshenv/.zshrc) so the scrubbed env stands.
+    argv = [_SANDBOX_EXEC, "-p", profile, "/bin/zsh", "-f", "-c", command]
+    try:
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout_s,
+            cwd=repo, env=_jazzy_clean_env(repo),
+        )
+        return {"command": command, "exit_code": proc.returncode,
+                "stdout": proc.stdout[-_MAX_CAPTURE:], "stderr": proc.stderr[-_MAX_CAPTURE:]}
+    except subprocess.TimeoutExpired:
+        return {"command": command, "exit_code": -1, "stdout": "",
+                "stderr": f"command timed out after {timeout_s}s"}
+
+
+# A few things that are never part of editing a photography site — blocked up
+# front with a clear message so the model adapts instead of hitting raw sandbox
+# errors. The sandbox profile is the real enforcement; this is for good UX.
+_JAZZY_FORBIDDEN = re.compile(
+    r"(?:^|[\s;&|(])(?:sudo|su)\b"
+    r"|security\s+(?:dump-keychain|find-(?:generic|internet)-password)"
+    r"|/Users/User/paradise-realty-beta"
+    r"|/Users/User/paradise-crm-audit",
+    re.IGNORECASE,
+)
+
+
+def _jazzy_confined_shell_runner(
+    session_mgr: SessionManager, gate: ApprovalGate, cfg: Config,
+):
+    """Shell runner for Jasmine's website bot: same classify→gate flow as the
+    assistant, but every command runs inside the sandbox (writes confined to her
+    repo, secrets scrubbed) and obvious out-of-scope commands are refused."""
+    from agentmgr.assistant import ShellResult
+    from agentmgr.command_policy import AUTO, classify_command
+
+    repo = cfg.jazzysphotos_dir
+    timeout = cfg.jazzysphotos_timeout_s
+
+    def run(command: str) -> ShellResult:
+        if _JAZZY_FORBIDDEN.search(command):
+            return ShellResult(
+                command=command, gate="denied",
+                stderr="Out of scope — I can only work on jazzysphotos.com.")
+        decision = classify_command(command)
+        if decision == AUTO:
+            gate_label = "auto"
+        elif (
+            not session_mgr.requires_fresh_approval(command)
+            and session_mgr.active_grant("shell") is not None
+        ):
+            gate_label = "session"
+        else:
+            try:
+                gate.request_approval(
+                    "jazzysphotos site command", {"command": command})
+            except (ApprovalDenied, ApprovalNotProvisioned) as exc:
+                return ShellResult(command=command, gate="denied", stderr=str(exc))
+            gate_label = "approved"
+        output = _run_command_confined(command, repo, timeout)
+        return ShellResult(
+            command=command, stdout=output["stdout"], stderr=output["stderr"],
+            exit_code=output["exit_code"], gate=gate_label,
+        )
+
+    return run
+
+
 def _process_jazzysphotos_goal(
     task: TaskSpec, store: StateStore, session_mgr: SessionManager,
     gate: ApprovalGate, cfg: Config, *, driver=None,
 ) -> None:
-    """Free-form site edit — a Claude tool-use loop scoped to the site repo."""
+    """Free-form site edit — a Claude tool-use loop sandboxed to the site repo."""
     from agentmgr.assistant import make_driver, run_agentic_loop
 
     goal = str(task.payload.get("goal", "")).strip()
@@ -935,9 +1143,7 @@ def _process_jazzysphotos_goal(
             task_id=task.id, status=TaskStatus.FAILED,
             error="no 'goal' in task payload", worker="jazzysphotos-site"))
         return
-    runner = _assistant_shell_runner(
-        session_mgr, gate, cfg,
-        cwd=cfg.jazzysphotos_dir, timeout_s=cfg.jazzysphotos_timeout_s)
+    runner = _jazzy_confined_shell_runner(session_mgr, gate, cfg)
     try:
         result = run_agentic_loop(
             driver or make_driver(cfg), goal,

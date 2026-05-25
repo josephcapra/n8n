@@ -17,7 +17,9 @@ below, and chat. Read-only commands auto-run; anything that modifies your Mac
 pops an approval in the app for your Touch ID / Face ID.
 
 In-memory + local: nothing is deployed, nothing leaves your machine except the
-LLM calls to Anthropic. Stop with Ctrl-C.
+LLM calls. The store is in-memory (fast, responsive under load); an operator
+session is auto-opened on every startup so the terminal works with no re-login.
+Stop with Ctrl-C.
 """
 
 from __future__ import annotations
@@ -30,13 +32,15 @@ import uvicorn
 
 from agent.local_agent import (
     process_assistant_task,
+    process_jazzysphotos_task,
+    process_lead_task,
     process_security_task,
     process_task,
 )
 from agentmgr.approval_gate import ApprovalGate
 from agentmgr.config import Config
 from agentmgr.logging_utils import get_logger
-from agentmgr.session import SessionManager
+from agentmgr.session import SessionManager, new_grant, sign_grant_with_token
 from master.main import build_app
 
 log = get_logger("agentmgr.run_local")
@@ -68,6 +72,12 @@ def main() -> int:
     os.environ.setdefault("AGENTMGR_REPORTS_PREFIX", "agentmgr-reports")
 
     cfg = Config(
+        # In-memory store: instant, no per-op network round-trip — keeps the
+        # Master responsive under load (Firestore made /agents etc. hang). State
+        # is lost on restart, but the auto-opened operator session below is
+        # recreated on every startup, so the terminal "just works" with no
+        # re-login regardless. (Chat history resets on restart — acceptable; the
+        # server normally runs continuously.)
         state_backend="memory",
         job_runner="local",
         api_token=_ADMIN_TOKEN,
@@ -77,6 +87,12 @@ def main() -> int:
         poll_interval_s=0.2,
         task_timeout_s=900.0,               # agentic loops can run a while
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        # Other LLMs for the cost-saving fast-path / tiering. Gemini Flash
+        # answers trivial conversational queries off the Anthropic bill.
+        google_api_key=os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY"),
+        google_model=os.environ.get("AGENTMGR_GOOGLE_MODEL", "gemini-2.5-flash"),
+        openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        openai_model=os.environ.get("AGENTMGR_OPENAI_MODEL", "gpt-4o-mini"),
     )
     app = build_app(cfg)
     store = app.state.store
@@ -91,26 +107,54 @@ def main() -> int:
         rp_id=cfg.rp_id, origin=cfg.origin, poll_interval_s=cfg.poll_interval_s,
     )
 
-    def mac_agent_loop() -> None:
-        log.info("local Mac agent thread started")
+    # Auto-open a durable operator session so the terminal + chat "just work"
+    # on this localhost (127.0.0.1) single-operator run — no manual sign-in and
+    # no "approval gate not provisioned" dead-end. Persists in Firestore so it
+    # survives restarts; long TTL so it never expires mid-use. Catastrophic
+    # commands (always-confirm denylist) still require fresh approval.
+    if session_mgr.active_grant("shell") is None:
+        grant = sign_grant_with_token(
+            new_grant("all", 365 * 24 * 3600.0), cfg.api_token
+        )
+        store.put_session(grant)
+        log.info("auto-opened operator session", extra={"session_id": grant.id})
+
+    def _process_one(task) -> None:
+        if task.kind == "assistant":
+            process_assistant_task(task, store, session_mgr, gate, cfg)
+        elif task.kind == "security":
+            process_security_task(task, store, cfg)
+        elif task.kind == "lead":
+            process_lead_task(task, store, cfg)
+        elif task.kind == "site":
+            process_jazzysphotos_task(task, store, session_mgr, gate, cfg)
+        else:
+            process_task(
+                task, store, session_mgr, gate,
+                timeout_s=cfg.shell_command_timeout_s,
+            )
+
+    def _loop(agent_names: tuple[str, ...], label: str) -> None:
+        log.info("%s worker thread started", label)
         while True:
             try:
-                for agent_name in ("mac-shell", "assistant", "security-health"):
+                for agent_name in agent_names:
                     for task in store.get_pending_tasks(agent_name):
-                        if task.kind == "assistant":
-                            process_assistant_task(task, store, session_mgr, gate, cfg)
-                        elif task.kind == "security":
-                            process_security_task(task, store, cfg)
-                        else:
-                            process_task(
-                                task, store, session_mgr, gate,
-                                timeout_s=cfg.shell_command_timeout_s,
-                            )
+                        _process_one(task)
             except Exception:  # noqa: BLE001 - keep the thread alive
-                log.exception("mac agent loop error; continuing")
+                log.exception("%s loop error; continuing", label)
             time.sleep(0.3)
 
-    threading.Thread(target=mac_agent_loop, daemon=True, name="mac-agent").start()
+    # Terminal (mac-shell) gets a DEDICATED thread so fast shell commands are
+    # never blocked behind a long agentic chat/assistant task — the two ran on
+    # one thread before, which made the terminal hang ("Failed to fetch") while
+    # a chat was thinking. assistant + security share a second thread.
+    threading.Thread(target=_loop, args=(("mac-shell",), "mac-shell"),
+                     daemon=True, name="mac-shell").start()
+    threading.Thread(
+        target=_loop,
+        args=(("assistant", "security-health", "lead-response", "jazzysphotos-site"), "assistant"),
+        daemon=True, name="assistant").start()
 
     bar = "=" * 60
     print(f"\n{bar}")

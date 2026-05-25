@@ -21,7 +21,9 @@ import hashlib
 import hmac
 import json
 import mimetypes
+import os
 import re
+import threading
 import time
 import uuid
 from collections import deque
@@ -47,8 +49,13 @@ from agentmgr.logging_utils import get_logger, set_correlation_id
 from agentmgr.passkey import PasskeyService, challenge_for, verify_assertion
 from agentmgr.llm import make_llm_router
 from agentmgr.memory import MemoryStore
-from agentmgr.planner import Plan, make_planner
-from agentmgr.registry import AgentRegistry, AgentSpec, append_agent_to_file
+from agentmgr.planner import Plan, PlanStep, make_planner
+from agentmgr.registry import (
+    AgentRegistry,
+    AgentSpec,
+    append_agent_to_file,
+    update_agent_in_file,
+)
 from agentmgr.schemas import (
     ApprovalResponse,
     ChatRequest,
@@ -59,6 +66,7 @@ from agentmgr.schemas import (
     TaskResult,
     TaskSpec,
     TaskStatus,
+    UpdateAgentRequest,
 )
 from agentmgr.session import (
     SessionManager,
@@ -97,6 +105,35 @@ def check_pwa_token(secret: str, token: str) -> bool:
         return hmac.compare_digest(sig, expected) and time.time() < int(exp)
     except Exception:  # noqa: BLE001
         return False
+
+
+# --- editable info-sheet details -----------------------------------------
+# Keys the PATCH endpoint accepts for an agent's `details`, by shape. Anything
+# else is dropped. `recent` is Scout-maintained but still editable by hand.
+_DETAILS_STR_KEYS = ("summary", "purpose", "automation", "security")
+_DETAILS_LIST_KEYS = ("tasks", "talks_to", "recent", "relays")
+_DETAILS_BOOL_KEYS = ("relays_any", "watches_all")
+
+
+def _clean_details(raw: dict) -> dict:
+    """Whitelist + coerce a details patch. Strings trimmed/capped, lists made
+    into clean string lists, bools coerced. Unknown keys are ignored."""
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=422, detail="details must be an object")
+    out: dict = {}
+    for k in _DETAILS_STR_KEYS:
+        if k in raw and raw[k] is not None:
+            out[k] = str(raw[k]).strip()[:1200]
+    for k in _DETAILS_LIST_KEYS:
+        if k in raw and raw[k] is not None:
+            items = raw[k] if isinstance(raw[k], list) else [raw[k]]
+            out[k] = [str(x).strip()[:400] for x in items if str(x).strip()][:20]
+    for k in _DETAILS_BOOL_KEYS:
+        if k in raw:
+            out[k] = bool(raw[k])
+    if not out:
+        raise HTTPException(status_code=422, detail="no recognized detail fields")
+    return out
 
 
 # --- application factory -------------------------------------------------
@@ -248,6 +285,35 @@ def build_app(config: Config | None = None) -> FastAPI:
         → ready, cloudrun-job → deployed/offline by checking which Cloud Run jobs
         actually exist (best-effort, cached)."""
         deployed = _deployed_job_names(app)
+        # Best-effort map of agent name -> latest report timestamp, so the info
+        # sheet's Health section can show real liveness for agents that report.
+        # Reports are keyed by agent name (id == source == name); degrade to {}.
+        last_reports: dict[str, str] = {}
+        try:
+            from agentmgr.reports import list_reports
+            for r in list_reports():
+                key = r.get("source") or r.get("id") or ""
+                ts = r.get("updated_at") or ""
+                if key and ts and ts > last_reports.get(key, ""):
+                    last_reports[key] = ts
+        except Exception:  # noqa: BLE001 - report store is non-critical here
+            last_reports = {}
+
+        def _last_run(name: str) -> dict:
+            # Latest TaskResult this Master has seen for the agent → a real
+            # "last run: ok/failed when" signal. Best-effort; never fatal.
+            try:
+                r = store.latest_result_for_worker(name)
+            except Exception:  # noqa: BLE001
+                r = None
+            if not r:
+                return {}
+            return {
+                "status": r.status.value if hasattr(r.status, "value") else str(r.status),
+                "finished_at": r.finished_at,
+                "ok": (r.status == TaskStatus.COMPLETED),
+            }
+
         out = []
         for a in app.state.registry.all():
             if a.runtime == "local-agent":
@@ -264,15 +330,133 @@ def build_app(config: Config | None = None) -> FastAPI:
             out.append({
                 "name": a.name, "title": a.title or a.name, "kind": a.kind, "runtime": a.runtime,
                 "region": a.region, "job_name": a.job_name,
+                "worker_module": a.worker_module,
                 "capabilities": list(a.capabilities), "description": a.description,
                 "sensitive_default": a.sensitive_default,
                 "group": group, "status": status,
+                "details": a.details or {},
+                "last_report": last_reports.get(a.name, ""),
+                "last_run": _last_run(a.name),
             })
         return {
             "agents": out,
             "count": len(out),
             "master": {"version": __version__, "llm": cfg.llm_provider},
         }
+
+    # --- JoeGPT customer-chat history (read-only views for the info sheet) ---
+    def _joegpt_db():
+        db = getattr(app.state, "joegpt_db", None)
+        if db is None:
+            from google.cloud import firestore
+            db = firestore.Client(project=cfg.project_id)
+            app.state.joegpt_db = db
+        return db
+
+    def _joegpt_admin_key() -> str | None:
+        cached = getattr(app.state, "joegpt_admin_key", None)
+        if cached is not None:
+            return cached or None
+        key = os.environ.get("JOEGPT_ADMIN_API_KEY", "")
+        if not key:
+            try:
+                from google.cloud import secretmanager
+                c = secretmanager.SecretManagerServiceClient()
+                name = f"projects/{cfg.project_id}/secrets/joegpt-admin-api-key/versions/latest"
+                key = c.access_secret_version(request={"name": name}).payload.data.decode()
+            except Exception:  # noqa: BLE001
+                key = ""
+        app.state.joegpt_admin_key = key
+        return key or None
+
+    def _joegpt_share_url(session_id: str) -> str | None:
+        key = _joegpt_admin_key()
+        if not key:
+            return None
+        tok = hmac.new(key.encode(), session_id.encode(), hashlib.sha256).hexdigest()[:32]
+        base = os.environ.get("JOEGPT_SERVICE_URL",
+                              "https://joegpt-383923649216.us-east1.run.app").rstrip("/")
+        return f"{base}/share/{session_id}/{tok}"
+
+    @app.get("/agents/{name}/chats", dependencies=[Depends(require_auth)])
+    def agent_chats(name: str, limit: int = 25) -> dict:
+        """Recent REAL customer conversations, newest first, for the info sheet.
+
+        Derived from the messages collection rather than the sessions collection:
+        JoeGPT logs many empty 'start' sessions (bots/crawlers) and its
+        ``total_messages`` counter is unreliable, so listing sessions shows mostly
+        blanks. Walking recent messages instead surfaces only conversations that
+        actually happened, each with a preview of the visitor's question."""
+        if name != "joegpt":
+            return {"supported": False, "sessions": []}
+        try:
+            from google.cloud import firestore
+            limit = max(1, min(limit, 50))
+            msgs = (_joegpt_db().collection("joegpt_messages")
+                    .order_by("ts", direction=firestore.Query.DESCENDING)
+                    .limit(800).stream())
+            order: list[str] = []
+            info: dict[str, dict] = {}
+            for m in msgs:
+                d = m.to_dict() or {}
+                sid = d.get("session_id")
+                if not sid:
+                    continue
+                e = info.get(sid)
+                if e is None:
+                    e = {"session_id": sid, "last_active_at": d.get("ts"),
+                         "total_messages": 0, "preview": ""}
+                    info[sid] = e
+                    order.append(sid)
+                e["total_messages"] += 1
+                if d.get("role") == "user" and d.get("content") and not e["preview"]:
+                    e["preview"] = str(d["content"])[:140]
+            sessions = [info[s] for s in order[:limit]]
+            return {"supported": True, "sessions": sessions}
+        except Exception as exc:  # noqa: BLE001
+            return {"supported": True, "sessions": [], "error": str(exc)[:200]}
+
+    @app.get("/agents/{name}/chats/{session_id}", dependencies=[Depends(require_auth)])
+    def agent_chat_transcript(name: str, session_id: str) -> dict:
+        """Full transcript of one JoeGPT conversation + a read-only share link."""
+        if name != "joegpt":
+            raise HTTPException(status_code=404, detail="unsupported agent")
+        try:
+            from google.cloud.firestore_v1.base_query import FieldFilter
+            snaps = (_joegpt_db().collection("joegpt_messages")
+                     .where(filter=FieldFilter("session_id", "==", session_id)).stream())
+            msgs = [m.to_dict() or {} for m in snaps]
+            msgs.sort(key=lambda x: x.get("ts", ""))
+            messages = [{
+                "role": m.get("role"), "content": m.get("content"), "ts": m.get("ts"),
+                "search_url": m.get("search_url"), "community_matched": m.get("community_matched"),
+            } for m in msgs if m.get("role") in ("user", "assistant")]
+            return {"session_id": session_id, "messages": messages,
+                    "share_url": _joegpt_share_url(session_id)}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"transcript read failed: {str(exc)[:200]}")
+
+    @app.get("/agents/{name}/health", dependencies=[Depends(require_auth)])
+    def agent_health(name: str) -> dict:
+        """Live health of the chatbot service — proxies JoeGPT's /status.json
+        (public; no Firestore needed) so the info sheet can show the stoplight
+        even when other things are down."""
+        if name != "joegpt":
+            return {"supported": False}
+        import httpx
+        base = os.environ.get("JOEGPT_SERVICE_URL",
+                              "https://joegpt-383923649216.us-east1.run.app").rstrip("/")
+        try:
+            r = httpx.get(f"{base}/status.json", timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            return {"supported": True, "reachable": True,
+                    "overall": data.get("overall"), "checks": data.get("checks", []),
+                    "checked_at": data.get("checked_at"), "url": base}
+        except Exception as exc:  # noqa: BLE001
+            return {"supported": True, "reachable": False,
+                    "overall": "red", "checks": [], "url": base,
+                    "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
     @app.post("/agents", dependencies=[Depends(require_auth)])
     def create_agent(spec: NewAgentRequest) -> dict:
@@ -304,8 +488,44 @@ def build_app(config: Config | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         app.state.registry = AgentRegistry.load()  # hot-reload for live requests
-        log.info("created agent", extra={"name": spec.name, "runtime": spec.runtime})
+        log.info("created agent", extra={"agent": spec.name, "runtime": spec.runtime})
         return {"created": entry, "count": len(app.state.registry.all())}
+
+    @app.patch("/agents/{name}", dependencies=[Depends(require_auth)])
+    def update_agent(name: str, patch: UpdateAgentRequest) -> dict:
+        """Edit an agent's display title or description (data-only).
+
+        Identity-bearing fields stay locked — changing them silently breaks
+        the worker contract — so this only touches `title` / `description`.
+        Lets the operator rename agents in the left rail without editing
+        `agents.json` by hand.
+        """
+        updates: dict = {}
+        if patch.title is not None:
+            t = patch.title.strip()
+            if not t:
+                raise HTTPException(status_code=422, detail="title cannot be blank")
+            if len(t) > 60:
+                raise HTTPException(status_code=422, detail="title is too long (60 chars max)")
+            updates["title"] = t
+        if patch.description is not None:
+            d = patch.description.strip()
+            if len(d) > 2000:
+                raise HTTPException(status_code=422, detail="description is too long")
+            updates["description"] = d
+        if patch.details is not None:
+            updates["details"] = _clean_details(patch.details)
+        if not updates:
+            raise HTTPException(status_code=422, detail="nothing to update")
+        try:
+            entry = update_agent_in_file(name, updates)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        app.state.registry = AgentRegistry.load()  # hot-reload for live requests
+        log.info("updated agent", extra={"agent": name, "fields": list(updates)})
+        return {"updated": entry}
 
     @app.get("/models", dependencies=[Depends(require_auth)])
     def models() -> dict:
@@ -496,6 +716,14 @@ def build_app(config: Config | None = None) -> FastAPI:
         return {"grade": out.get("grade"), "counts": out.get("counts"),
                 "subject": out.get("subject"), "email": out.get("email")}
 
+    @app.get("/site-health/status", dependencies=[Depends(require_auth)])
+    def site_health_status(fresh: bool = False) -> dict:
+        """Read-only website health (live site) for the command-center light +
+        click-through details. NON-BLOCKING: the scan can take ~15s (the live
+        sitemap is slow), so this returns the last cached result immediately and
+        refreshes in a background thread. ?fresh=1 forces a re-scan next cycle."""
+        return _website_light(app, fresh=fresh)
+
     # --- jazzysphotos.com site agent ------------------------------------
     # The Website panel dispatches a task to the local 'jazzysphotos-site'
     # agent and polls for its result. Publishing actions block in the agent on
@@ -549,7 +777,8 @@ def build_app(config: Config | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="empty command")
         task = TaskSpec(
             agent=cfg.local_agent_name, kind="shell",
-            payload={"command": command, "cwd": body.get("cwd") or None},
+            payload={"command": command, "cwd": body.get("cwd") or None,
+                     "stream": bool(body.get("stream"))},
             conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
         )
         store.put_task(task)
@@ -563,6 +792,24 @@ def build_app(config: Config | None = None) -> FastAPI:
             return {"ready": False}
         return {"ready": True, "status": result.status,
                 "output": result.output or {}, "error": result.error}
+
+    # Live progress for the streaming console: returns the stdout accumulated
+    # so far plus a `done` flag. The UI polls this fast and renders the new
+    # tail each time, so the operator sees the work as it happens instead of a
+    # single dump at the end.
+    @app.get("/terminal/stream/{task_id}", dependencies=[Depends(require_auth)])
+    def terminal_stream(task_id: str) -> dict:
+        output = store.get_task_output(task_id)
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": True, "done": False, "output": output}
+        # Done. Fall back to the final result's text if nothing was streamed
+        # (e.g. a backend that doesn't implement live output).
+        if not output:
+            o = result.output or {}
+            output = (o.get("stdout") or "") + (o.get("stderr") or "")
+        return {"ready": True, "done": True, "output": output,
+                "status": result.status, "error": result.error}
 
     # --- approvals -------------------------------------------------------
     @app.get("/approvals", dependencies=[Depends(require_auth)])
@@ -736,6 +983,86 @@ def _recent_history_block(turns: list, max_turns: int = _HISTORY_MAX_TURNS) -> s
     )
 
 
+# Agents that can hold a free-form conversation through the existing infra. Only
+# the agentic 'assistant' truly does today; an agent can opt in by setting
+# details.chat_mode = "direct" (or out with "proxy") in the registry.
+_DIRECT_CHAT_KINDS = {"assistant"}
+
+
+def _agent_chat_mode(agent: AgentSpec) -> str:
+    """How a left-rail "Message" turn reaches this agent:
+      * "direct" — dispatched straight to the agent as its own task.
+      * "proxy"  — handled by the Master assistant *on the agent's behalf*,
+                   with the agent's profile injected so the reply stays scoped.
+    """
+    mode = (agent.details or {}).get("chat_mode")
+    if mode in ("direct", "proxy"):
+        return mode
+    return "direct" if agent.kind in _DIRECT_CHAT_KINDS else "proxy"
+
+
+def _agent_focus_block(agent: AgentSpec) -> str:
+    """A system-prompt block telling the Master assistant to answer AS and ABOUT
+    one specific agent — used by the "proxy" chat mode so every agent in the
+    roster is chattable, scoped to just that agent's job and data."""
+    d = agent.details or {}
+    name = agent.title or agent.name
+    lines = [
+        "## Agent focus — direct chat with one agent",
+        f'The operator is chatting directly with the "{name}" agent (id: {agent.name}).',
+        "Answer AS and ABOUT this one agent only: its job, its data, its recent "
+        "activity, and what it can do. Do not act as or speak for other agents. "
+        "If the request is clearly outside this agent's scope, say so briefly and "
+        "suggest switching back to the Manager.",
+        "",
+        f"Name: {name} (id {agent.name})",
+        f"Kind/runtime: {agent.kind} · {agent.runtime}",
+    ]
+    if agent.description:
+        lines.append(f"Description: {agent.description}")
+    if agent.capabilities:
+        lines.append("Capabilities: " + ", ".join(agent.capabilities))
+    if d.get("summary"):
+        lines.append("Summary: " + str(d["summary"]))
+    if d.get("purpose"):
+        lines.append("Purpose: " + str(d["purpose"]))
+    if d.get("tasks"):
+        lines.append("What it does: " + "; ".join(str(t) for t in d["tasks"]))
+    if d.get("automation"):
+        lines.append("Automation: " + str(d["automation"]))
+    if d.get("security"):
+        lines.append("Security notes: " + str(d["security"]))
+    return "\n".join(lines)
+
+
+def _direct_chat_payload(agent: AgentSpec, message: str) -> dict:
+    """Map a free-text chat message onto the agent's own task payload. Most
+    conversational agents read ``goal``; the jazzysphotos-site agent (kind
+    ``site``) runs free-form edits via its sandboxed ``goal`` action."""
+    if agent.kind == "site":
+        return {"action": "goal", "goal": message}
+    return {"goal": message}
+
+
+def _plan_for_target(registry: AgentRegistry, target: str, message: str) -> Plan:
+    """Build a one-step plan that scopes this turn to ``target``. Raises KeyError
+    if the agent isn't registered (caller falls back to normal planning)."""
+    agent = registry.get(target)
+    if _agent_chat_mode(agent) == "direct":
+        step = PlanStep(
+            agent=agent.name, kind=agent.kind,
+            payload=_direct_chat_payload(agent, message),
+            sensitive=agent.sensitive_default,
+        )
+        return Plan(summary=f"direct chat -> {agent.name}", steps=[step])
+    # proxy: the Master assistant answers on the agent's behalf
+    step = PlanStep(
+        agent="assistant", kind="assistant",
+        payload={"goal": message, "agent_focus": _agent_focus_block(agent)},
+    )
+    return Plan(summary=f"chat as {agent.name} -> assistant", steps=[step])
+
+
 def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
     cfg: Config = app.state.config
     store: StateStore = app.state.store
@@ -747,18 +1074,30 @@ def run_command(app: FastAPI, req: ChatRequest) -> ChatResponse:
     log.info("received command", extra={"conversation_id": conversation_id})
 
     # Explicit memory commands ("remember …", "what do you remember", "forget …")
-    # are handled directly — deterministic, no LLM, no Mac agent.
-    mem_reply = _handle_memory_intent(req.message, app.state.memory)
-    if mem_reply is not None:
-        store.append_turn(conversation_id, ConversationTurn(role="master", text=mem_reply))
-        return ChatResponse(
-            conversation_id=conversation_id, correlation_id=correlation_id,
-            interpretation="memory", task_ids=[], reply=mem_reply,
-        )
+    # are handled directly — deterministic, no LLM, no Mac agent. Skipped when the
+    # turn is scoped to one agent: there, everything goes to that agent's chat.
+    if not req.target_agent:
+        mem_reply = _handle_memory_intent(req.message, app.state.memory)
+        if mem_reply is not None:
+            store.append_turn(conversation_id, ConversationTurn(role="master", text=mem_reply))
+            return ChatResponse(
+                conversation_id=conversation_id, correlation_id=correlation_id,
+                interpretation="memory", task_ids=[], reply=mem_reply,
+            )
 
-    plan: Plan = app.state.planner.plan(
-        req.message, app.state.registry, correlation_id
-    )
+    # A targeted turn (left-rail "Message") bypasses the planner and routes
+    # straight to that one agent; an unknown name degrades to normal planning.
+    plan: Plan | None = None
+    if req.target_agent:
+        try:
+            plan = _plan_for_target(app.state.registry, req.target_agent, req.message)
+        except KeyError:
+            log.warning("unknown target_agent; planning normally",
+                        extra={"target_agent": req.target_agent})
+    if plan is None:
+        plan = app.state.planner.plan(
+            req.message, app.state.registry, correlation_id
+        )
     interpretation = f"{plan.summary} · command: {req.message!r}"
     log.info("planned", extra={"plan": plan.summary})
 
@@ -982,6 +1321,44 @@ def _security_light(app: FastAPI, fresh: bool = False) -> dict:
     return out
 
 
+def _website_light(app: FastAPI, fresh: bool = False) -> dict:
+    """Website health for the command-center light. Unlike the security scan
+    (fast local commands), this hits the live site — the sitemap alone can take
+    ~15s — so it NEVER blocks the request: it returns the last cached result
+    immediately and kicks off a background refresh when the cache is stale
+    (>30 min) or fresh=True. The 12s UI poll picks up the new result next tick.
+    Maps the A–F grade to a red/yellow/green light, like the security light."""
+    now = time.time()
+    cached = getattr(app.state, "site_cache", None)        # (ts, result) or None
+    scanning = getattr(app.state, "site_scanning", False)
+    stale = fresh or cached is None or (now - cached[0] > 1800)
+    if stale and not scanning:
+        app.state.site_scanning = True
+
+        def _bg() -> None:
+            try:
+                from tools.website_health import run as run_site
+
+                res = run_site()
+                grade = res.get("grade", "?")
+                light = "green" if grade in ("A", "B") else "yellow" if grade == "C" else "red"
+                out = {"grade": grade, "light": light, "counts": res.get("counts", {}),
+                       "findings": res.get("findings", []), "checked": res.get("checked")}
+            except Exception as exc:  # noqa: BLE001 - light is best-effort
+                out = {"grade": "?", "light": "unknown", "error": str(exc)[:200], "findings": []}
+            app.state.site_cache = (time.time(), out)
+            app.state.site_scanning = False
+
+        threading.Thread(target=_bg, daemon=True, name="site-health").start()
+
+    if cached is not None:
+        out = dict(cached[1])
+        out["scanning"] = getattr(app.state, "site_scanning", False)
+        out["age_s"] = int(now - cached[0])
+        return out
+    return {"grade": "?", "light": "unknown", "findings": [], "scanning": True}
+
+
 def _execute_inline(app: FastAPI, agent: AgentSpec, task: TaskSpec) -> None:
     store: StateStore = app.state.store
     store.update_task_status(task.id, TaskStatus.RUNNING)
@@ -1006,7 +1383,7 @@ def _execute_inline(app: FastAPI, agent: AgentSpec, task: TaskSpec) -> None:
 
 # Agents the operator talks WITH (vs. batch workers it dispatches): these
 # speak in plain prose, not labeled status lines or raw data dumps.
-_CONVERSATIONAL_AGENTS = frozenset({"assistant", "mac-shell"})
+_CONVERSATIONAL_AGENTS = frozenset({"assistant", "mac-shell", "jazzysphotos-site"})
 
 
 def _clean_error(error: str | None) -> str:

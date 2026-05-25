@@ -69,8 +69,8 @@ def _gcs_list() -> list[dict]:
         if blob.name.endswith(".json") and not blob.name.endswith("index.json"):
             try:
                 meta = json.loads(blob.download_as_text())
-            except (ValueError, OSError):
-                continue
+            except Exception:  # noqa: BLE001 - skip a blob that won't parse OR
+                continue       # vanished mid-list (GCS list→download generation race)
             if isinstance(meta, dict) and meta.get("id"):
                 out.append(meta)
     return out

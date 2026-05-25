@@ -65,6 +65,24 @@ class StateStore(ABC):
     @abstractmethod
     def get_task_result(self, task_id: str) -> TaskResult | None: ...
 
+    # --- live task output (streaming consoles) --------------------------
+    # Backends that drive a streaming terminal accumulate partial stdout here
+    # so the UI can show progress before the task finishes. The defaults are
+    # no-ops, so stores that don't override them degrade gracefully: no live
+    # stream, but the final output still arrives via the task result.
+    def append_task_output(self, task_id: str, text: str) -> None:
+        return None
+
+    def get_task_output(self, task_id: str) -> str:
+        return ""
+
+    # --- last run per agent (health) ------------------------------------
+    # The most recent TaskResult whose ``worker`` is this agent — powers the
+    # info sheet's "last run: ok/failed N ago". Default None so stores that
+    # don't track it degrade gracefully (Health falls back to live status).
+    def latest_result_for_worker(self, worker: str) -> TaskResult | None:
+        return None
+
     # --- inter-agent message bus ----------------------------------------
     @abstractmethod
     def put_message(self, message: Message) -> None: ...
@@ -151,6 +169,7 @@ class InMemoryStateStore(StateStore):
         self._conversations: dict[str, list[ConversationTurn]] = {}
         self._tasks: dict[str, TaskSpec] = {}
         self._results: dict[str, TaskResult] = {}
+        self._task_output: dict[str, list[str]] = {}   # live stdout chunks
         self._messages: list[Message] = []
         self._approvals: dict[str, ApprovalRequest] = {}
         self._job_counts: dict[str, int] = {}
@@ -197,6 +216,22 @@ class InMemoryStateStore(StateStore):
         with self._lock:
             r = self._results.get(task_id)
             return r.model_copy(deep=True) if r else None
+
+    def latest_result_for_worker(self, worker: str) -> TaskResult | None:
+        with self._lock:
+            mine = [r for r in self._results.values() if r.worker == worker]
+            if not mine:
+                return None
+            # finished_at is ISO-8601, so lexical max == most recent.
+            return max(mine, key=lambda r: r.finished_at).model_copy(deep=True)
+
+    def append_task_output(self, task_id: str, text: str) -> None:
+        with self._lock:
+            self._task_output.setdefault(task_id, []).append(text)
+
+    def get_task_output(self, task_id: str) -> str:
+        with self._lock:
+            return "".join(self._task_output.get(task_id, []))
 
     def put_message(self, message: Message) -> None:
         with self._lock:
@@ -375,6 +410,21 @@ class FirestoreStateStore(StateStore):
     def get_task_result(self, task_id: str) -> TaskResult | None:
         snap = self._db.collection(self._c_result).document(task_id).get()
         return TaskResult(**snap.to_dict()) if snap.exists else None
+
+    def latest_result_for_worker(self, worker: str) -> TaskResult | None:
+        # Equality-only filter (no composite index needed); sort client-side so
+        # this never trips a "needs an index" error. Best-effort: any failure
+        # (no collection yet, perms) just yields None and Health falls back.
+        try:
+            docs = self._db.collection(self._c_result).where(
+                "worker", "==", worker
+            ).stream()
+            results = [TaskResult(**d.to_dict()) for d in docs]
+        except Exception:  # noqa: BLE001
+            return None
+        if not results:
+            return None
+        return max(results, key=lambda r: r.finished_at)
 
     # message bus ---------------------------------------------------------
     def put_message(self, message: Message) -> None:

@@ -139,6 +139,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     attachments: list[Attachment] = Field(default_factory=list)
     model: str | None = None         # UI model selector; "auto"/None = cost-aware Claude
+    target_agent: str | None = None  # scope this turn to one agent (left-rail "Message")
 
 
 class ChatResponse(BaseModel):
@@ -159,3 +160,19 @@ class NewAgentRequest(BaseModel):
     description: str = ""
     capabilities: list[str] = Field(default_factory=list)
     sensitive_default: bool = False
+
+
+class UpdateAgentRequest(BaseModel):
+    """PATCH /agents/{name} — edit the display title or description.
+
+    Identity-bearing fields (name, kind, runtime, job_name, region,
+    worker_module) are intentionally NOT editable here — changing them would
+    silently break the worker contract. Use the agents.json file + a Master
+    restart for that.
+    """
+    title: str | None = None
+    description: str | None = None
+    # Structured info-sheet content (summary, tasks[], purpose, automation,
+    # talks_to[], security, …). Merged key-by-key so editing one field never
+    # wipes the others (e.g. Scout-maintained ``recent``).
+    details: dict | None = None

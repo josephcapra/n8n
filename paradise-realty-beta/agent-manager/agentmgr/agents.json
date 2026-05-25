@@ -1,355 +1,767 @@
 {
- "_comment": "Agent registry. Add a worker by appending an entry and deploying a matching runtime (Cloud Run Job, local daemon, or master-inline). No Master code changes \u2014 see registry.py and README 'Extending the registry'.",
- "agents": [
-  {
-   "name": "echo-worker",
-   "kind": "echo",
-   "job_name": "agentmgr-worker-echo",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "worker.run",
-   "description": "Placeholder worker. Echoes its input payload back as a typed result. Terminal \u2014 emits no relay messages.",
-   "capabilities": [
-    "echo",
-    "ping"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "transform-worker",
-   "kind": "transform",
-   "job_name": "agentmgr-worker-transform",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "worker.transform",
-   "description": "Phase 2 second worker. Applies a text transform (upper/lower/reverse/count) and can relay its result through the Master to another agent.",
-   "capabilities": [
-    "transform",
-    "text"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "assistant",
-   "kind": "assistant",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Agentic assistant \u2014 a Claude tool-use loop that runs terminal commands on the operator's Mac to accomplish a natural-language goal. Read-only commands auto-run; anything else needs the operator's approval.",
-   "capabilities": [
-    "assist",
-    "agentic",
-    "shell",
-    "reasoning"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "mac-shell",
-   "kind": "shell",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Runs shell commands on the operator's Mac via the outbound-only local agent. Every command is SENSITIVE \u2014 gated by the session window or per-command approval.",
-   "capabilities": [
-    "shell",
-    "gcloud",
-    "filesystem"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "cloudrun-admin",
-   "kind": "cloudrun",
-   "job_name": "",
-   "region": "us-east1",
-   "runtime": "master-inline",
-   "description": "Reads and manages Cloud Run via the Master's scoped service account. Works even when the Mac is offline. Read ops are benign; mutating ops are SENSITIVE.",
-   "capabilities": [
-    "cloudrun",
-    "cloudrun-read",
-    "cloudrun-manage"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "communities-scraper",
-   "kind": "scrape_communities",
-   "job_name": "communities-scraper",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "update_communities_all",
-   "description": "Scrapes new-construction community data (listings, pricing, DOM, descriptions) and writes it to the communities Google Sheet. Long-running Playwright job; mutates the sheet, so SENSITIVE.",
-   "capabilities": [
-    "scrape",
-    "communities",
-    "sheets"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "newhome-source-updater",
-   "kind": "update_newhome_source",
-   "job_name": "newhome-source-updater",
-   "region": "us-central1",
-   "runtime": "cloudrun-job",
-   "worker_module": "newhome_source_updater",
-   "description": "Refreshes the FL new-home community source list: adds new communities, marks sold-out ones, emails a change report. Mutates the source sheet, so SENSITIVE.",
-   "capabilities": [
-    "communities",
-    "sheets",
-    "report"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "sitemap-sync-weekly",
-   "kind": "sync_sitemaps",
-   "job_name": "sitemap-sync-weekly",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "sync-sitemaps",
-   "description": "Weekly sitemap sync \u2014 builds sitemaps from the communities CSV in GCS and uploads them. Accepts payload.args to override the default CLI flags. Publishes sitemaps, so SENSITIVE.",
-   "capabilities": [
-    "sitemap",
-    "seo",
-    "gcs"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "bing-daily",
-   "kind": "bing_manage",
-   "job_name": "bing-daily",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "bing_manager",
-   "description": "Daily Bing Webmaster automation \u2014 submits URLs via IndexNow and pulls the Bing SEO report. Submits to Bing, so SENSITIVE.",
-   "capabilities": [
-    "bing",
-    "seo",
-    "indexnow",
-    "report"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "security-health",
-   "kind": "security",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Scans this Mac's security posture (disk encryption, firewall, exposed ports, credential-file permissions, remote-access software, secrets in shell history), grades it, and emails the operator a health report via SendGrid. Read-only scan; sends one email.",
-   "capabilities": [
-    "security",
-    "audit",
-    "report",
-    "email"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "security-probe",
-   "kind": "security_probe",
-   "job_name": "agentmgr-security-probe",
-   "region": "us-east1",
-   "runtime": "cloudrun-job",
-   "worker_module": "worker.security_probe",
-   "description": "Cloud Run job that probes the operator's own public web assets for risk \u2014 TLS cert expiry, HTTPS enforcement, missing security headers, and exposed sensitive paths (/.env, /.git) \u2014 grades them, and emails a report. Non-intrusive external scan; safe to schedule.",
-   "capabilities": [
-    "security",
-    "probe",
-    "external",
-    "report",
-    "email"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "incentive-social",
-   "kind": "incentive_social",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "worker_module": "worker.incentive_social",
-   "description": "Scans the builder-incentives Google Sheet for fresh, customer-facing incentives (excludes mortgage rates/financing and agent/realtor bonuses), drafts Facebook + Instagram posts linked to the matching SE-Florida area page, and emails them to the operator for approval. Runs on the Mac via the local agent (the Cloud Run job was never deployed). Posting to Meta happens only after approval. Sends email, so SENSITIVE.",
-   "capabilities": [
-    "social",
-    "incentives",
-    "marketing",
-    "report",
-    "email"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "crm-office-leads",
-   "kind": "crm",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Office-Lead CRM agent for RealGeeks. Runs on the Mac (uses the saved RealGeeks browser session). Set payload.action to one of: 'daily_report' (pull the officelead-tagged leads, analyze needs-attention/activity/per-agent, and EMAIL the daily report to the broker), 'report_only' (build + save the report files, no email), 'verify_phantom_tasks' (READ-ONLY count of future-dated 2050+ follow-up tasks). Reads the CRM and may send an email to the operator; not destructive.",
-   "capabilities": [
-    "crm",
-    "leads",
-    "officelead",
-    "report",
-    "followups",
-    "email"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "crm-task-cleanup",
-   "kind": "crm_cleanup",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Office-Lead CRM cleanup. Runs on the Mac. payload.action='clear_phantom_tasks' completes every far-future (year 2030+) follow-up task \u2014 the phantom 2052-2055 reminders left by the buggy drip workflow. Proven safe (posts only internal notes, sends NO customer email; halts if any outbound email is detected). MUTATES the live CRM, so SENSITIVE \u2014 every run needs operator approval.",
-   "capabilities": [
-    "crm",
-    "cleanup",
-    "followups"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "jazzysphotos-site",
-   "kind": "site",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Updates the jazzysphotos.com photography site (the Astro repo on this Mac). Set payload.action. BENIGN, auto-run actions: 'status' (git state + pending changes), 'build' (npm run build to validate locally, no push), 'refresh_instagram' (npm run instagram \u2014 refreshes the Instagram preview images, staged but not published). PUBLISHING actions commit + push to main, which deploys to the live site via Cloudflare (live in ~90s) \u2014 each is SENSITIVE and needs operator approval: 'update_copy' (set a top-level copy field in site.ts, payload.field + payload.value), 'add_photo' (payload.image_path/title/alt/category[/featured/order]), 'remove_photo' (payload.slug), 'publish' (commit + push whatever is pending, payload.message). 'goal' runs a Claude tool-use loop scoped to the repo for free-form edits \u2014 its shell commands are gated per command.",
-   "capabilities": [
-    "site",
-    "web",
-    "astro",
-    "content",
-    "deploy",
-    "publish"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "lead-response",
-   "kind": "lead",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Lead-response agent for RealGeeks. Scans NEW leads, scores each (HOT/WARM/COLD), and DRAFTS a personalized first-response message (drafts only \u2014 never sends). payload.action 'scan' (default), payload.limit N. Uses the saved RealGeeks browser session; if expired, run office-leads/relogin.js.",
-   "capabilities": [
-    "crm",
-    "leads",
-    "new-leads",
-    "draft",
-    "score",
-    "realgeeks"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "taylor",
-   "kind": "marketing",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Taylor \u2014 marketing & weekly agent reports for the Martin / St. Lucie / Palm Beach market. Builds each realtor (and loan officer Jody) a personalized report \u2014 customer activity, speed-to-lead, top-5 active leads, today's plays + live-flow activities from the Paradise Scorecard, a BeachesMLS market update (days-on-market, absorption, hot neighborhoods), our office listings, builder incentives, copy-paste social posts, and an AI tip \u2014 then emails it. payload.action: 'weekly_send' (default \u2014 full live pull; email EACH agent THEIR report and CC the broker), 'review' (email all reports to the broker only), 'preview' (build report files, no email). Uses the saved RealGeeks browser session + BeachesMLS (Spark). weekly_send emails real agents. Auto-runs Mondays 5 AM via launchd (com.paradise.taylor.weekly).",
-   "capabilities": [
-    "marketing",
-    "reports",
-    "crm",
-    "agents",
-    "market-data",
-    "social",
-    "email"
-   ],
-   "sensitive_default": false,
-   "title": "Taylor"
-  },
-  {
-   "name": "joe-crm-report",
-   "title": "Joe's CRM Report",
-   "kind": "joe_crm",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Joe's CRM Report \u2014 office-WIDE RealGeeks operations report: metrics across ALL officelead leads (NOT split by agent). Needs-attention buckets (awaiting reply, new & untouched, overdue follow-ups, going-cold backlog, unassigned), a 24h activity recap, the per-agent breakdown, and recommendations. payload.action: 'email_report' (default \u2014 build + EMAIL the office-wide report to Joe; this is what runs on click), 'metrics' (build the report and RETURN the structured office snapshot JSON so other agents \u2014 e.g. Taylor \u2014 can pull office-wide CRM numbers through the Master). Subordinate to the agent master; other agents reach it via the 'office-leads'/'metrics' capabilities. Uses the saved RealGeeks session.",
-   "capabilities": [
-    "crm",
-    "office-leads",
-    "metrics",
-    "report",
-    "operations",
-    "email"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "joegpt",
-   "kind": "chatbot",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "worker_module": "",
-   "description": "JoeGPT \u2014 the public chatbot on paradiserealtyfla.com. Lives as a Cloud Run service (service name 'joegpt') at ~/paradise-realty/joegpt/, plus the in-process HFMaster sub-agent at ~/paradise-realty/hfmaster/agents/joegpt/. Replaces the legacy Zapier webhook; logs every session, message, lead, and handoff to Firestore (joegpt_sessions / joegpt_messages / joegpt_events). payload.action: 'deploy' (runs deploy-joegpt.sh \u2014 builds + deploys to Cloud Run us-east1; SENSITIVE), 'health' (GET /healthz against the live service), 'transcript' (GET /session/{id}/transcript with the admin key from Secret Manager 'joegpt-admin-api-key'; payload.session_id), 'recent_sessions' (read joegpt_sessions ordered by last_active_at desc, default 20), 'test_chat' (POST /session/start + /chat with a scripted prompt to smoke-test the live service). Anthropic key in Secret Manager 'anthropic-api-key'. Does NOT touch ~/paradise-realty/api/.",
-   "capabilities": [
-    "chatbot",
-    "lead-capture",
-    "search",
-    "realgeeks",
-    "anthropic",
-    "firestore",
-    "cloudrun"
-   ],
-   "sensitive_default": false
-  },
-  {
-   "name": "joegpt-handoff",
-   "kind": "handoff",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "JoeGPT human-handoff notifier. Wraps hfmaster/agents/chat_handoff.py and the Google Chat webhooks in Secret Manager (gchat-webhook-newcon / gchat-webhook-team / gchat-webhook-joe). Fires Card V2 messages with visitor name, contact, conversation summary, and a deep-link to the JoeGPT transcript endpoint. Routing is data-driven by hfmaster/routing_rules.yaml (business-hours new-construction \u2192 newcon, urgent \u2192 joe, default \u2192 team). payload.action: 'test_routing' (dry-run resolve a {topic, time_of_day, urgency} \u2192 space without sending), 'send_test_card' (post a clearly-labeled TEST card to the resolved space; SENSITIVE \u2014 real Google Chat traffic), 'recent_handoffs' (read Firestore 'handoff_events' ordered by created_at desc). Sends to a real chat space when used, so test sparingly.",
-   "capabilities": [
-    "handoff",
-    "google-chat",
-    "notification",
-    "routing"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "joegpt-migrate",
-   "kind": "migrate",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "JoeGPT community-list migrator \u2014 replaces the old Zapier 'Master Community Landing Page' table with a Firestore collection ('community_landing_pages') that JoeGPT's search_communities tool reads. Wraps ~/paradise-realty/hfmaster/agents/joegpt/scripts/migrate_zapier_to_firestore.py. payload.action: 'preview' (read the CSV at scripts/master_communities.csv and print a row-count summary; no writes), 'migrate' (upsert every row into 'community_landing_pages' keyed by lowercased community_name; SENSITIVE \u2014 mutates Firestore), 'list_communities' (dump the current Firestore collection), 'refresh_cache' (call hfmaster/agents/joegpt/community_lookup.refresh() so the next chat picks up new rows without redeploying). One-time setup primarily, but safe to re-run when the CSV changes.",
-   "capabilities": [
-    "migration",
-    "firestore",
-    "communities",
-    "csv"
-   ],
-   "sensitive_default": true
-  },
-  {
-   "name": "scout",
-   "title": "Scout \u2014 Agent R&D",
-   "kind": "improvement",
-   "job_name": "",
-   "region": "local",
-   "runtime": "local-agent",
-   "description": "Scout \u2014 continuous-improvement / R&D for the whole agent network. Reviews every registered agent + recent run logs + agent-master commits, then surfaces CROSS-AGENT LEARNINGS (a capability one agent has that others should adopt), proposes concrete improvements + new functions/features, flags errors/auth-expiries in the logs, and suggests new tools/APIs/models to explore \u2014 accumulating it all in a shared LEARNINGS.md so the agents build on each other over time. ADVISORY ONLY: it proposes; a human reviews + applies; it never edits other agents or code automatically. payload.action: 'report' (research + EMAIL the report to the operator), 'research' (research + append to LEARNINGS.md, no email). Auto-runs TWICE DAILY via launchd (com.paradise.scout.twicedaily, 6 AM + 6 PM); the morning run emails the report. Uses OpenAI.",
-   "capabilities": [
-    "improvement",
-    "research",
-    "learning",
-    "meta",
-    "report",
-    "email"
-   ],
-   "sensitive_default": false
-  }
- ]
+  "_comment": "Agent registry. Add a worker by appending an entry and deploying a matching runtime (Cloud Run Job, local daemon, or master-inline). No Master code changes \u2014 see registry.py and README 'Extending the registry'.",
+  "agents": [
+    {
+      "name": "echo-worker",
+      "kind": "echo",
+      "job_name": "agentmgr-worker-echo",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "worker.run",
+      "description": "WHAT IT DOES: just bounces whatever payload you send it straight back as a result. WHY IT EXISTS: smoke-test for the agent-manager wiring \u2014 if echo-worker round-trips cleanly, the queue/runner/result path is healthy. No real-world side effects, nothing to schedule, ignore unless you're debugging the system itself.",
+      "capabilities": [
+        "echo",
+        "ping"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "A no-op smoke test that bounces any payload straight back. It exists to prove the agent-manager plumbing (queue \u2192 runner \u2192 result) is healthy.",
+        "tasks": [
+          "Echo a payload back unchanged",
+          "Round-trip the queue/runner/result path"
+        ],
+        "purpose": "Lets you confirm the orchestration wiring works without touching anything real.",
+        "automation": "On-demand only \u2014 ignore unless you're debugging the system itself.",
+        "talks_to": [
+          "Master only \u2014 answers the orchestrator, never other agents.",
+          "No real-world side effects."
+        ],
+        "security": "Harmless. No side effects, not sensitive.",
+        "recent": [
+          "2026-05-21 \u2014 Shipped with the master/worker orchestrator as the wiring smoke-test."
+        ]
+      }
+    },
+    {
+      "name": "transform-worker",
+      "kind": "transform",
+      "job_name": "agentmgr-worker-transform",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "worker.transform",
+      "description": "WHAT IT DOES: takes text and does a basic transform on it (upper/lower/reverse/count), then optionally hands the result through the Master to ANOTHER agent. WHY IT EXISTS: it's the proof-of-concept that agents can chain to each other via the Master \u2014 a 'plumbing' test, no business value on its own.",
+      "capabilities": [
+        "transform",
+        "text"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Does a basic text transform (upper / lower / reverse / count), then can hand its result through the Master to ANOTHER agent.",
+        "tasks": [
+          "Transform text: upper, lower, reverse, count",
+          "Chain the result to another agent via the Master"
+        ],
+        "purpose": "Proof-of-concept that agents can relay work to each other through the Master \u2014 a plumbing test, no business value on its own.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Can chain its output through the Master to ANY other agent (inter-agent relay demo)."
+        ],
+        "security": "Harmless text ops. Not sensitive.",
+        "recent": [
+          "2026-05-21 \u2014 Registered as a Level-B worker; demonstrates inter-agent chaining via the Master."
+        ],
+        "relays_any": true
+      }
+    },
+    {
+      "name": "assistant",
+      "kind": "assistant",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "YOUR GENERAL-PURPOSE AI HELPER FOR THIS MAC. Give it a plain-English goal (e.g. 'find what's hogging port 8080', 'show me the biggest folders in Downloads', 'why is gcloud failing?') and it runs a Claude tool-use loop that figures out the right terminal commands and executes them. Safe, read-only commands run automatically; anything that writes files, installs software, or sends data waits for your one-click approval. Think of it as a smart shoulder-tap helper for tech chores.",
+      "capabilities": [
+        "assist",
+        "agentic",
+        "shell",
+        "reasoning"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Your general-purpose AI helper for this Mac. Give it a plain-English goal and it runs a Claude tool-use loop that figures out and executes the right terminal commands.",
+        "tasks": [
+          "Diagnose issues (e.g. 'what's hogging port 8080?')",
+          "Inspect the filesystem ('biggest folders in Downloads')",
+          "Troubleshoot tooling ('why is gcloud failing?')",
+          "Run a scoped agentic shell loop"
+        ],
+        "purpose": "A smart shoulder-tap helper for tech chores \u2014 you describe the outcome, it works out the steps.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Runs on your Mac under the Master; reports back to you via the chat + approvals."
+        ],
+        "security": "Safe, read-only commands run automatically; anything that writes files, installs software, or sends data waits for your one-click approval.",
+        "recent": [
+          "2026-05-21 \u2014 Part of the initial PWA chat / orchestrator.",
+          "2026-05-22 \u2014 Chat model selector added (Claude / OpenAI / Gemini)."
+        ]
+      }
+    },
+    {
+      "name": "mac-shell",
+      "kind": "shell",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "RAW TERMINAL FOR YOUR MAC, EXPOSED IN THIS UI. You type a shell command, the local agent runs it on your machine and shows the output. Use it when you want exact control instead of letting `assistant` decide. Because a shell can do literally anything (delete files, deploy, log in), EVERY command is SENSITIVE \u2014 either pre-approved by an open session window or one-by-one click-to-approve.",
+      "capabilities": [
+        "shell",
+        "gcloud",
+        "filesystem"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "A raw terminal for your Mac exposed in this UI. You type a shell command, the local agent runs it on your machine and shows the output.",
+        "tasks": [
+          "Run an exact shell command",
+          "Back the in-app Claude Code console"
+        ],
+        "purpose": "For when you want precise control instead of letting `assistant` decide the commands.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Master only; every command is gated by you.",
+          "Backs the in-app Claude Code console."
+        ],
+        "security": "EVERY command is SENSITIVE \u2014 a shell can do anything (delete files, deploy, log in). Pre-approved only inside an open session window, otherwise click-to-approve each command.",
+        "recent": [
+          "2026-05-22 \u2014 Exposed in the command center; in-app Claude Code console wired through it."
+        ]
+      }
+    },
+    {
+      "name": "cloudrun-admin",
+      "kind": "cloudrun",
+      "job_name": "",
+      "region": "us-east1",
+      "runtime": "master-inline",
+      "description": "MANAGE YOUR GOOGLE CLOUD RUN SERVICES + JOBS FROM THIS UI. List/inspect services, view logs, redeploy, pause, delete \u2014 the things you'd otherwise SSH or `gcloud` for. Runs INSIDE the Master (not your Mac), so it still works when your laptop is off. Read operations are safe; anything that mutates (redeploy/delete) is SENSITIVE and asks for approval.",
+      "capabilities": [
+        "cloudrun",
+        "cloudrun-read",
+        "cloudrun-manage"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Manage your Google Cloud Run services + jobs from this UI \u2014 list, inspect, view logs, redeploy, pause, delete. Runs inside the Master, so it works even when your laptop is off.",
+        "tasks": [
+          "List / inspect Cloud Run services + jobs",
+          "View service logs",
+          "Redeploy, pause, or delete a service"
+        ],
+        "purpose": "The things you'd otherwise SSH or `gcloud` for, in one panel \u2014 and reachable when your Mac is closed.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Runs inside the Master (not your Mac); reports to you."
+        ],
+        "security": "Read operations are safe; anything that mutates (redeploy / delete) is SENSITIVE and asks for approval.",
+        "recent": [
+          "2026-05-22 \u2014 Added as a master-inline agent for Cloud Run service/job management."
+        ]
+      }
+    },
+    {
+      "name": "communities-scraper",
+      "kind": "scrape_communities",
+      "job_name": "communities-scraper",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "update_communities_all",
+      "description": "KEEPS YOUR NEW-CONSTRUCTION COMMUNITY DATABASE FRESH. Visits each builder's website with a headless browser and pulls live listings, pricing, days-on-market, and descriptions \u2014 then writes it all into the master communities Google Sheet that feeds the Paradise Finder search tool and every area page. This handles WHAT DATA to pull for the communities already on the list. (Its sibling `newhome-source-updater` controls WHICH communities are on the list.) Long-running Playwright job; mutates the live sheet, so SENSITIVE.",
+      "capabilities": [
+        "scrape",
+        "communities",
+        "sheets"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Keeps your new-construction community database fresh. Visits each builder's site with a headless browser and pulls live listings, pricing, days-on-market, and descriptions into the master communities Google Sheet.",
+        "tasks": [
+          "Scrape builder sites for live listings + pricing + DOM",
+          "Write results into the communities sheet",
+          "Refresh the Paradise Finder area-pages overlay + sitemap (downstream stage)"
+        ],
+        "purpose": "Handles WHAT DATA to pull for communities already on the list \u2014 feeding the Paradise Finder search tool and every area page.",
+        "automation": "Scheduled Cloud Run job (cron + agentmgr-worker paths auto-refresh it); also runnable on demand. Long-running Playwright job.",
+        "talks_to": [
+          "Downstream of `newhome-source-updater` (which decides WHICH communities exist).",
+          "Writes the sheet that feeds Paradise Finder + area pages."
+        ],
+        "security": "SENSITIVE \u2014 mutates the live communities sheet.",
+        "recent": [
+          "2026-05-22 \u2014 Register 4 Cloud Run jobs as Level-B agent-manager workers"
+        ]
+      }
+    },
+    {
+      "name": "newhome-source-updater",
+      "kind": "update_newhome_source",
+      "job_name": "newhome-source-updater",
+      "region": "us-central1",
+      "runtime": "cloudrun-job",
+      "worker_module": "newhome_source_updater",
+      "description": "MAINTAINS THE MASTER LIST OF EVERY FLORIDA NEW-HOME COMMUNITY. Discovers brand-new builder communities to ADD, marks sold-out ones as INACTIVE, then emails you a clean change report. This is the upstream of `communities-scraper` \u2014 it manages WHICH communities exist on the list; the scraper handles WHAT DATA to pull for them. Mutates the source sheet, so SENSITIVE.",
+      "capabilities": [
+        "communities",
+        "sheets",
+        "report"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Maintains the master list of every Florida new-home community \u2014 discovers brand-new builder communities to ADD, marks sold-out ones INACTIVE, then emails you a clean change report.",
+        "tasks": [
+          "Discover & add new builder communities",
+          "Mark sold-out communities inactive",
+          "Email a change report"
+        ],
+        "purpose": "The upstream of `communities-scraper` \u2014 it manages WHICH communities exist; the scraper handles WHAT DATA to pull for them.",
+        "automation": "Cloud Run job \u2014 trigger on demand to refresh the master list; emails a report each run.",
+        "talks_to": [
+          "Feeds `communities-scraper` (adds/retires communities; the scraper then scrapes them)."
+        ],
+        "security": "SENSITIVE \u2014 mutates the source sheet.",
+        "recent": [
+          "2026-05-22 \u2014 Share reports via GCS so cloud-job reports appear in the command center",
+          "2026-05-22 \u2014 Register 4 Cloud Run jobs as Level-B agent-manager workers"
+        ]
+      }
+    },
+    {
+      "name": "sitemap-sync-weekly",
+      "kind": "sync_sitemaps",
+      "job_name": "sitemap-sync-weekly",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "sync-sitemaps",
+      "description": "REBUILDS THE PARADISEREALTYFLA.COM SITEMAP AND PUBLISHES IT. Reads the communities CSV out of GCS, regenerates the sitemap files, uploads them \u2014 this is how Google and Bing know what pages exist on your site so they can crawl + rank them. Runs weekly. Publishes live SEO files, so SENSITIVE. (You can override the default CLI flags via payload.args.)",
+      "capabilities": [
+        "sitemap",
+        "seo",
+        "gcs"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Rebuilds the paradiserealtyfla.com sitemap and publishes it \u2014 reads the communities CSV from GCS, regenerates the sitemap files, and uploads them so Google and Bing know what to crawl.",
+        "tasks": [
+          "Read the communities CSV from GCS",
+          "Regenerate the sitemap files",
+          "Upload the live sitemaps"
+        ],
+        "purpose": "How search engines discover your pages so they can crawl + rank them.",
+        "automation": "Weekly (Cloud Run job). You can override the default CLI flags via payload.args.",
+        "talks_to": [
+          "Standalone; publishes SEO files consumed by Google + Bing."
+        ],
+        "security": "SENSITIVE \u2014 publishes live SEO files to GCS.",
+        "recent": [
+          "2026-05-22 \u2014 Register 4 Cloud Run jobs as Level-B agent-manager workers"
+        ]
+      }
+    },
+    {
+      "name": "bing-daily",
+      "kind": "bing_manage",
+      "job_name": "bing-daily",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "bing_manager",
+      "description": "DAILY BING SEO PUSH. Submits new + updated URLs to Bing via IndexNow (gets you indexed in hours instead of weeks) and pulls back the Bing Webmaster Tools performance report. Touches Bing's live submission API, so SENSITIVE. (Mostly superseded by the website-report Cloud Run job that already runs at 5 AM; kept around for one-off pushes.)",
+      "capabilities": [
+        "bing",
+        "seo",
+        "indexnow",
+        "report"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Daily Bing SEO push \u2014 submits new + updated URLs via IndexNow (indexed in hours, not weeks) and pulls back the Bing Webmaster Tools performance report.",
+        "tasks": [
+          "Submit new/updated URLs to Bing via IndexNow",
+          "Pull the Bing Webmaster performance report"
+        ],
+        "purpose": "Get fresh pages indexed fast and track Bing performance.",
+        "automation": "Daily (Cloud Run job) \u2014 mostly superseded by the 5 AM website-report job; kept for one-off pushes.",
+        "talks_to": [
+          "Standalone Bing push; overlaps the website-report job."
+        ],
+        "security": "SENSITIVE \u2014 touches Bing's live submission API.",
+        "recent": [
+          "2026-05-22 \u2014 Share reports via GCS so cloud-job reports appear in the command center",
+          "2026-05-22 \u2014 Register 4 Cloud Run jobs as Level-B agent-manager workers"
+        ]
+      }
+    },
+    {
+      "name": "security-health",
+      "kind": "security",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "INTERNAL SECURITY CHECKUP FOR THIS MAC. Audits disk encryption (FileVault), the firewall, exposed ports, file permissions on your credential files (~/.config/gcloud, ~/.aws, SSH keys), remote-access apps installed (TeamViewer / AnyDesk / etc.), and any secrets/passwords leaked into shell history. Grades it all and emails you a health report. Read-only \u2014 it doesn't change anything; it just tells you what's risky. Companion to `security-probe` (which scans your sites from OUTSIDE).",
+      "capabilities": [
+        "security",
+        "audit",
+        "report",
+        "email"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Internal security checkup for this Mac \u2014 audits FileVault, firewall, exposed ports, credential-file permissions, remote-access apps, and secrets leaked into shell history, then grades it and emails a report.",
+        "tasks": [
+          "Audit disk encryption + firewall + open ports",
+          "Check credential-file permissions (~/.config/gcloud, ~/.aws, SSH)",
+          "Detect remote-access apps + secrets in shell history",
+          "Grade and email the report"
+        ],
+        "purpose": "Tells you what's risky on your own machine. Companion to `security-probe` (which scans your sites from outside).",
+        "automation": "On-demand \u2014 also surfaced by the clickable Security light in the command center.",
+        "talks_to": [
+          "Companion to `security-probe` (inward vs outward scan); emails you the report."
+        ],
+        "security": "Read-only audit \u2014 changes nothing. Not sensitive. (Inspects credential paths, so keep its output internal.)",
+        "recent": [
+          "2026-05-22 \u2014 agent-manager: add CRM office-lead worker + pending agent additions",
+          "2026-05-22 \u2014 View emailed reports from the command center"
+        ]
+      }
+    },
+    {
+      "name": "security-probe",
+      "kind": "security_probe",
+      "job_name": "agentmgr-security-probe",
+      "region": "us-east1",
+      "runtime": "cloudrun-job",
+      "worker_module": "worker.security_probe",
+      "description": "EXTERNAL SECURITY CHECKUP FOR YOUR WEBSITES. From a Cloud Run server (so it sees the internet's view, like a real attacker would), it checks TLS cert expiry, HTTPS enforcement, missing security headers (CSP/HSTS/etc.), and accidentally-exposed sensitive paths like /.env or /.git on your public sites. Grades each one, emails the report. Non-intrusive \u2014 safe to schedule. Counterpart to `security-health`: that one scans INWARD to your Mac, this one scans OUTWARD to your sites.",
+      "capabilities": [
+        "security",
+        "probe",
+        "external",
+        "report",
+        "email"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "External security checkup for your websites \u2014 from a Cloud Run server (the internet's view) it checks TLS expiry, HTTPS enforcement, missing security headers, and accidentally-exposed paths like /.env or /.git.",
+        "tasks": [
+          "Check TLS cert expiry + HTTPS enforcement",
+          "Flag missing security headers (CSP/HSTS/\u2026)",
+          "Probe for exposed /.env, /.git, etc.",
+          "Grade each site + email the report"
+        ],
+        "purpose": "Sees your public sites the way a real attacker would. Counterpart to `security-health` (which scans inward to your Mac).",
+        "automation": "Non-intrusive \u2014 safe to schedule; currently on-demand (Cloud Run job).",
+        "talks_to": [
+          "Companion to `security-health`; emails you the report."
+        ],
+        "security": "Non-intrusive external scan \u2014 safe. Not sensitive.",
+        "recent": [
+          "2026-05-22 \u2014 agent-manager: add CRM office-lead worker + pending agent additions"
+        ]
+      }
+    },
+    {
+      "name": "incentive-social",
+      "kind": "incentive_social",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "worker_module": "worker.incentive_social",
+      "description": "TURNS FRESH BUILDER INCENTIVES INTO READY-TO-POST SOCIAL CONTENT. Watches the builder-incentives Google Sheet for new CUSTOMER-FACING offers (it ignores mortgage rate buy-downs and agent/realtor bonuses \u2014 those don't belong on public social), drafts a Facebook + Instagram post that links straight to the matching SE-Florida area page on the site, and emails the drafts to you for one-click approval. Nothing posts to Meta until you say yes. Sends email + queues social, so SENSITIVE. Runs on this Mac.",
+      "capabilities": [
+        "social",
+        "incentives",
+        "marketing",
+        "report",
+        "email"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Turns fresh builder incentives into ready-to-post social content \u2014 watches the incentives sheet for customer-facing offers, drafts FB + IG posts linking to the matching SE-FL area page, and emails the drafts for your approval.",
+        "tasks": [
+          "Watch the builder-incentives sheet for new customer-facing offers",
+          "Draft Facebook + Instagram posts linked to the matching area page",
+          "Email the drafts for one-click approval"
+        ],
+        "purpose": "Keeps your social feed current with real, postable offers \u2014 without anything going live until you say yes.",
+        "automation": "Runs on this Mac, on-demand. Ignores mortgage-rate buy-downs and agent/realtor bonuses (not public-facing).",
+        "talks_to": [
+          "Pulls from the builder-incentives sheet; links to SE-FL area pages.",
+          "Shares its incentive toolkit with Taylor + Joe's CRM Report."
+        ],
+        "security": "SENSITIVE \u2014 sends email + queues social. Nothing posts to Meta until you approve.",
+        "recent": [
+          "2026-05-22 \u2014 agent-manager: run incentive-social locally (its Cloud Run job was never deployed)",
+          "2026-05-22 \u2014 agent-manager: add CRM office-lead worker + pending agent additions"
+        ]
+      }
+    },
+    {
+      "name": "crm-office-leads",
+      "kind": "crm",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "DAILY 'STATE OF THE OFFICE'S LEADS' DIGEST FROM REALGEEKS. Every day, pulls every lead tagged `officelead`, sorts them into the buckets you actually act on (NEEDS ATTENTION, RECENT ACTIVITY, per-agent breakdown), and emails the report to the broker. Think of it as the daily standup for the CRM. payload.action: `daily_report` = build + email, `report_only` = build files but don't email, `verify_phantom_tasks` = read-only count of the buggy 2050+ follow-ups the drip workflow keeps creating. Reads CRM + sends one internal email; not destructive.",
+      "capabilities": [
+        "crm",
+        "leads",
+        "officelead",
+        "report",
+        "followups",
+        "email"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Daily 'state of the office's leads' digest from RealGeeks \u2014 pulls every `officelead`, sorts them into the buckets you act on (Needs Attention, Recent Activity, per-agent), and emails the broker.",
+        "tasks": [
+          "daily_report \u2014 build + email the digest",
+          "report_only \u2014 build files, don't email",
+          "verify_phantom_tasks \u2014 read-only count of the buggy 2050+ follow-ups"
+        ],
+        "purpose": "The daily standup for the CRM.",
+        "automation": "Daily digest (local agent).",
+        "talks_to": [
+          "Sibling of Taylor (per-agent reports) and Joe's CRM Report (office-wide ops)."
+        ],
+        "security": "Reads the CRM + sends ONE internal email; not destructive. Not sensitive.",
+        "recent": [
+          "2026-05-22 \u2014 CRM office-lead worker added to the agent master.",
+          "2026-05-22 \u2014 Reports viewable from the command center."
+        ]
+      }
+    },
+    {
+      "name": "crm-task-cleanup",
+      "kind": "crm_cleanup",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "ONE-PURPOSE FIXER: deletes the phantom future-dated follow-up tasks that a buggy RealGeeks drip workflow keeps creating (the 2030+ / 2050+ reminders that pollute everyone's task list). payload.action `clear_phantom_tasks` completes them with a quiet internal note. PROVEN SAFE \u2014 it never sends customer email and self-halts if it detects any outbound mail. But it MUTATES the live CRM, so every run is SENSITIVE and needs your one-click approval. Use whenever the phantom-task count creeps back up.",
+      "capabilities": [
+        "crm",
+        "cleanup",
+        "followups"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "One-purpose fixer: deletes the phantom future-dated follow-up tasks a buggy RealGeeks drip keeps creating (the 2030+/2050+ reminders that pollute everyone's task list).",
+        "tasks": [
+          "clear_phantom_tasks \u2014 complete the phantom tasks with a quiet internal note"
+        ],
+        "purpose": "Keeps the CRM task list clean. Run whenever the phantom-task count creeps back up.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Standalone CRM fixer; self-halts if it ever detects outbound mail."
+        ],
+        "security": "SENSITIVE \u2014 mutates the live CRM (needs approval each run). Proven safe: never emails customers, self-halts on any outbound mail.",
+        "recent": [
+          "2026-05-22 \u2014 Added as the phantom-task fixer alongside the CRM office-lead worker."
+        ]
+      },
+      "title": "crm-task-Assistant"
+    },
+    {
+      "name": "jazzysphotos-site",
+      "kind": "site",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "RUNS JAZZYSPHOTOS.COM (Jasmine's photography site \u2014 the Astro repo on this Mac). SAFE actions auto-run: `status` (git state), `build` (local validate, no push), `refresh_instagram` (pull the latest IG previews, staged not published). PUBLISHING actions commit + push to main, which auto-deploys via Cloudflare in ~90 seconds and ARE SENSITIVE \u2014 each needs your approval: `update_copy` (edit a text field in site.ts), `add_photo` / `remove_photo`, `publish` (push whatever's pending). `goal` runs a Claude tool-use loop scoped to the repo for free-form edits (its shell commands are still per-command approved).",
+      "capabilities": [
+        "site",
+        "web",
+        "astro",
+        "content",
+        "deploy",
+        "publish"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "chat_mode": "direct",
+        "summary": "Runs jazzysphotos.com (Jasmine's Astro photography site on this Mac). Safe actions validate locally; publishing actions commit + push to main and auto-deploy via Cloudflare in ~90 seconds.",
+        "tasks": [
+          "status \u2014 git state",
+          "build \u2014 local validate, no push",
+          "refresh_instagram \u2014 pull latest IG previews (staged)",
+          "update_copy / add_photo / remove_photo / publish \u2014 SENSITIVE, push to live",
+          "goal \u2014 free-form repo edits via a scoped Claude loop"
+        ],
+        "purpose": "Manage and publish the photography site without leaving the command center.",
+        "automation": "On-demand \u2014 runs when you trigger it from the command center.",
+        "talks_to": [
+          "Standalone; deploys jazzysphotos.com via Cloudflare Pages."
+        ],
+        "security": "Read/build actions auto-run; publishing actions commit + push to the live site and ARE SENSITIVE (each gated). `goal` shell commands are per-command approved.",
+        "recent": [
+          "2026-05-22 \u2014 Add security agents, connector layer, and Google Drive access",
+          "2026-05-20 \u2014 Add ONBOARDING.md \u2014 single doc for picking the project back up later \u00b7 jazzysphotos",
+          "2026-05-19 \u2014 Instagram: drop the other two unfortunate IG public crops (back-of-head, eye-only) \u00b7 jazzysphotos",
+          "2026-05-19 \u2014 Instagram: drop 2 unacceptable crops (dress/grass, back of head) \u00b7 jazzysphotos",
+          "2026-05-19 \u2014 Instagram: uniform square tiles, image 'contain'-fit so full photo always shows \u00b7 jazzysphotos",
+          "2026-05-19 \u2014 Instagram: bigger tiles (3 cols on desktop, fits 9 in 3x3 with room to breathe) \u00b7 jazzysphotos"
+        ]
+      }
+    },
+    {
+      "name": "lead-response",
+      "kind": "lead",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "WRITES THE FIRST REPLY TO NEW REALGEEKS LEADS FOR YOU. Scans brand-new leads, SCORES each one HOT / WARM / COLD based on their behavior + property interest, and DRAFTS a personalized opener tailored to that lead. DRAFTS ONLY \u2014 it never sends. Built to crush your speed-to-lead: instead of an agent typing a first message from scratch, they copy-paste a ready-made one. payload.action `scan` (default), payload.limit N to cap. Uses the saved RealGeeks browser session.",
+      "capabilities": [
+        "crm",
+        "leads",
+        "new-leads",
+        "draft",
+        "score",
+        "realgeeks"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Writes the first reply to new RealGeeks leads for you \u2014 scans brand-new leads, scores each HOT / WARM / COLD on behavior + property interest, and drafts a personalized opener. Drafts only; never sends.",
+        "tasks": [
+          "scan \u2014 score new leads + draft openers (default)",
+          "limit N \u2014 cap how many leads to process"
+        ],
+        "purpose": "Crush speed-to-lead: instead of typing a first message from scratch, an agent copy-pastes a ready-made one.",
+        "automation": "On-demand (scan). Uses the saved RealGeeks browser session.",
+        "talks_to": [
+          "Standalone; produces drafts for agents to send."
+        ],
+        "security": "DRAFTS ONLY \u2014 it never sends. Not sensitive.",
+        "recent": [
+          "2026-05-22 \u2014 Added: HOT/WARM/COLD scoring + drafted first replies for new RealGeeks leads."
+        ]
+      }
+    },
+    {
+      "name": "taylor",
+      "kind": "marketing",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "TAYLOR \u2014 PERSONAL WEEKLY REPORT, ONE PER REALTOR (Martin / St. Lucie / Palm Beach). Each Monday morning, Taylor builds every agent (plus loan officer Jody) THEIR OWN report: their customer activity, their speed-to-lead, their top 5 active leads, today's plays from the Paradise Scorecard, a fresh BeachesMLS market update (DOM, absorption, hot neighborhoods), our office listings, current builder incentives, copy-paste social posts they can fire off, and one AI coaching tip \u2014 then emails it directly to that agent (broker CC'd). This is the 'per-agent' lens. (Sibling `joe-crm-report` zooms out to office-wide numbers; `crm-office-leads` is the daily activity digest.) payload.action: `weekly_send` (default, live email to each agent), `review` (email all reports to broker only), `preview` (build files, no email). Auto-runs Monday 5 AM via launchd.",
+      "capabilities": [
+        "marketing",
+        "reports",
+        "crm",
+        "agents",
+        "market-data",
+        "social",
+        "email"
+      ],
+      "sensitive_default": false,
+      "title": "Taylor Reporting",
+      "details": {
+        "summary": "Taylor builds every realtor (plus loan officer Jody) their OWN weekly report each Monday \u2014 their activity, speed-to-lead, top-5 leads, today's plays, a fresh BeachesMLS market update, office listings, current incentives, copy-paste social posts, and one AI coaching tip \u2014 then emails it to them (broker CC'd).",
+        "tasks": [
+          "weekly_send \u2014 live email to each agent (default)",
+          "review \u2014 email all reports to the broker only",
+          "preview \u2014 build files, no email"
+        ],
+        "purpose": "The per-agent lens on performance + this week's plays, delivered straight to each realtor.",
+        "automation": "Auto-runs Monday 5 AM via launchd.",
+        "talks_to": [
+          "Pulls office-wide numbers from `joe-crm-report` THROUGH the Master relay (wired this week).",
+          "Sibling of `joe-crm-report` (office-wide) + `crm-office-leads` (daily activity)."
+        ],
+        "security": "weekly_send sends live email to each agent \u2014 use review/preview to stay broker-only. Not flagged sensitive.",
+        "recent": [
+          "2026-05-22 \u2014 Wire Joe's CRM Report -> Taylor relay through the Master",
+          "2026-05-22 \u2014 Add Taylor marketing agent (weekly per-agent reports) to the agent master"
+        ],
+        "relays": [
+          "joe-crm-report"
+        ]
+      }
+    },
+    {
+      "name": "joe-crm-report",
+      "title": "Joe's CRM Report",
+      "kind": "joe_crm",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "JOE'S CRM REPORT \u2014 OFFICE-WIDE OPERATIONS VIEW for the broker. Where Taylor gives EACH agent their personal report, and crm-office-leads gives the daily activity recap, THIS one zooms ALL THE WAY OUT: office-level health metrics across every `officelead` \u2014 awaiting reply, new & untouched, overdue follow-ups, going-cold backlog, unassigned leads, 24h activity recap, per-agent breakdown, and recommended next actions. payload.action: `email_report` (default \u2014 build + email it to Joe; this is what runs when you click the card), `metrics` (return the structured office snapshot as JSON so OTHER agents \u2014 e.g. Taylor \u2014 can pull office-wide numbers through the Master). Uses the saved RealGeeks session.",
+      "capabilities": [
+        "crm",
+        "office-leads",
+        "metrics",
+        "report",
+        "operations",
+        "email"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Joe's CRM Report zooms all the way out: office-level health across every `officelead` \u2014 awaiting reply, new & untouched, overdue follow-ups, going-cold backlog, unassigned leads, 24h recap, per-agent breakdown, and recommended next actions.",
+        "tasks": [
+          "email_report \u2014 build + email it to Joe (default; what the card runs)",
+          "metrics \u2014 return the structured office snapshot as JSON for other agents"
+        ],
+        "purpose": "The broker's office-wide operations view, where Taylor is per-agent and crm-office-leads is the daily recap.",
+        "automation": "On-demand. Uses the saved RealGeeks session.",
+        "talks_to": [
+          "Serves office-wide metrics to `taylor` via the Master relay.",
+          "Zoomed-out sibling of `taylor` + `crm-office-leads`."
+        ],
+        "security": "Reads the CRM + emails Joe; the `metrics` action is read-only JSON. Not sensitive.",
+        "recent": [
+          "2026-05-22 \u2014 Wire Joe's CRM Report -> Taylor relay through the Master",
+          "2026-05-22 \u2014 Joe's CRM Report: metrics action returns a compact office-wide summary",
+          "2026-05-22 \u2014 Add Joe's CRM Report agent (office-wide CRM ops) to the agent master"
+        ],
+        "relays": [
+          "taylor"
+        ]
+      }
+    },
+    {
+      "name": "joegpt",
+      "kind": "chatbot",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "worker_module": "",
+      "description": "JOEGPT \u2014 THE PUBLIC AI CHATBOT ON PARADISEREALTYFLA.COM. Answers visitor questions, looks up communities, captures leads, and hands off to a human when the conversation needs it \u2014 every session/message/lead/handoff logged to Firestore so you can replay any chat. Runs as a Cloud Run service. This agent is the CONTROL PANEL for that service: payload.action `deploy` ships a new version (SENSITIVE), `health` confirms the live service is up, `transcript` pulls a specific session's messages (payload.session_id), `recent_sessions` lists the last 20 chats, `test_chat` runs a scripted prompt against the live bot to smoke-test it. Replaces the legacy Zapier webhook.",
+      "capabilities": [
+        "chatbot",
+        "lead-capture",
+        "search",
+        "realgeeks",
+        "anthropic",
+        "firestore",
+        "cloudrun"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "The control panel for JoeGPT \u2014 the public AI chatbot on paradiserealtyfla.com that answers visitor questions, looks up communities, captures leads, and hands off to a human, logging every session to Firestore.",
+        "tasks": [
+          "deploy \u2014 ship a new version (SENSITIVE)",
+          "health \u2014 confirm the live service is up",
+          "transcript \u2014 pull a session's messages (payload.session_id)",
+          "recent_sessions \u2014 list the last 20 chats",
+          "test_chat \u2014 run a scripted prompt against the live bot"
+        ],
+        "purpose": "Operate + observe the live chatbot service (replaces the legacy Zapier webhook).",
+        "automation": "On-demand control panel for the Cloud Run service.",
+        "talks_to": [
+          "Hands off to a human via `joegpt-handoff`.",
+          "`joegpt-migrate` seeds its Firestore community data.",
+          "Logs every session/message/lead to Firestore."
+        ],
+        "security": "`deploy` is SENSITIVE; health / transcript / recent_sessions / test_chat are safe reads.",
+        "recent": [
+          "2026-05-23 \u2014 JoeGPT service live (/chat working, community lookup via finder overlay + RG search); stoplight status page; 89 tests pass.",
+          "2026-05-23 \u2014 Needed SA secretAccessor grant + a Firestore index-avoidance fix."
+        ],
+        "relays": [
+          "joegpt-handoff"
+        ]
+      }
+    },
+    {
+      "name": "joegpt-handoff",
+      "kind": "handoff",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "WHEN JOEGPT DECIDES A HUMAN NEEDS TO TAKE OVER, THIS AGENT FIRES THE ALERT INTO GOOGLE CHAT. Posts a Card V2 with the visitor's name, contact info, conversation summary, and a deep link to the full transcript \u2014 so whoever picks it up has full context. Routing rules pick the right space automatically (new-construction questions \u2192 newcon, urgent \u2192 Joe directly, default \u2192 the team channel). payload.action `test_routing` = DRY RUN, resolves which space WOULD be picked without sending; `send_test_card` = posts a clearly-labeled TEST card to that space (SENSITIVE \u2014 real Chat traffic); `recent_handoffs` = list what's already been fired.",
+      "capabilities": [
+        "handoff",
+        "google-chat",
+        "notification",
+        "routing"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "When JoeGPT decides a human should take over, this fires the alert into Google Chat \u2014 a Card V2 with the visitor's name, contact, conversation summary, and a deep link to the full transcript.",
+        "tasks": [
+          "test_routing \u2014 DRY RUN: resolve which space WOULD be picked",
+          "send_test_card \u2014 post a clearly-labeled TEST card (SENSITIVE)",
+          "recent_handoffs \u2014 list what's already been fired"
+        ],
+        "purpose": "Make sure whoever picks up a handed-off chat has full context, routed to the right team automatically.",
+        "automation": "Event-driven \u2014 fires when JoeGPT hands off. Routing: new-construction \u2192 newcon, urgent \u2192 Joe, default \u2192 team channel.",
+        "talks_to": [
+          "Triggered by `joegpt` when a human is needed.",
+          "Posts to the right Google Chat space automatically."
+        ],
+        "security": "SENSITIVE \u2014 `send_test_card` posts real Google Chat traffic. Use `test_routing` (dry run) first.",
+        "recent": [
+          "2026-05-23 \u2014 Added: Google Chat Card V2 handoff with automatic space routing."
+        ]
+      }
+    },
+    {
+      "name": "joegpt-migrate",
+      "kind": "migrate",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "MOSTLY-ONE-TIME SETUP: moves JoeGPT's community-landing-page table out of the old Zapier sheet and into a Firestore collection JoeGPT can query directly (so chat replies stop depending on Zapier). payload.action: `preview` = read the CSV and summarize rows, no writes; `migrate` = upsert every row into Firestore (SENSITIVE \u2014 mutates the live collection); `list_communities` = dump the current collection so you can spot-check it; `refresh_cache` = make the live bot pick up new rows WITHOUT redeploying. Re-run any time the source CSV changes.",
+      "capabilities": [
+        "migration",
+        "firestore",
+        "communities",
+        "csv"
+      ],
+      "sensitive_default": true,
+      "details": {
+        "summary": "Mostly-one-time setup: moves JoeGPT's community-landing-page table out of the old Zapier sheet into a Firestore collection JoeGPT can query directly.",
+        "tasks": [
+          "preview \u2014 read the CSV + summarize rows (no writes)",
+          "migrate \u2014 upsert every row into Firestore (SENSITIVE)",
+          "list_communities \u2014 dump the collection to spot-check",
+          "refresh_cache \u2014 make the live bot pick up new rows without redeploying"
+        ],
+        "purpose": "Stop JoeGPT's replies from depending on Zapier. Re-run any time the source CSV changes.",
+        "automation": "On-demand (mostly one-time).",
+        "talks_to": [
+          "Feeds `joegpt`'s Firestore community table."
+        ],
+        "security": "SENSITIVE \u2014 `migrate` upserts the live Firestore collection. `preview` / `list_communities` are read-only.",
+        "recent": [
+          "2026-05-23 \u2014 Added: migrate the community-landing table from the Zapier sheet into Firestore."
+        ]
+      }
+    },
+    {
+      "name": "scout",
+      "title": "Scout \u2014 Agent R&D",
+      "kind": "improvement",
+      "job_name": "",
+      "region": "local",
+      "runtime": "local-agent",
+      "description": "SCOUT \u2014 THE R&D AGENT THAT WATCHES ALL THE OTHER AGENTS AND TELLS YOU HOW TO MAKE THEM BETTER. Twice a day it reviews every registered agent, recent run logs, and recent agent-master commits, then surfaces: (1) CROSS-AGENT LEARNINGS \u2014 a capability one agent has that another should adopt, (2) concrete improvements + new functions/features to add, (3) errors and expired-auth warnings buried in the logs, (4) new tools / APIs / models worth exploring. Everything accumulates in LEARNINGS.md so the network compounds over time. ADVISORY ONLY \u2014 it never edits other agents; a human reviews + applies. payload.action `report` = research + EMAIL the report; `research` = research + append to LEARNINGS.md without emailing. Auto-runs 6 AM + 6 PM via launchd (the morning run emails).",
+      "capabilities": [
+        "improvement",
+        "research",
+        "learning",
+        "meta",
+        "report",
+        "email"
+      ],
+      "sensitive_default": false,
+      "details": {
+        "summary": "Scout is the R&D agent that watches all the OTHER agents and tells you how to make them better. Twice a day it reviews every agent, recent run logs, and recent agent-master commits, then surfaces cross-agent learnings, concrete improvements, log errors, and new tools worth exploring.",
+        "tasks": [
+          "report \u2014 research + EMAIL the R&D report",
+          "research \u2014 research + append to LEARNINGS.md without emailing",
+          "Refresh each agent's 'Recently added' list from git history"
+        ],
+        "purpose": "Help the agent network compound over time \u2014 everything accumulates in LEARNINGS.md. Advisory only: it proposes, a human applies.",
+        "automation": "Auto-runs 6 AM + 6 PM daily via launchd (the morning run emails).",
+        "talks_to": [
+          "Watches ALL agents (reads the registry + run logs + agent-master commits); emails you.",
+          "Never commands or edits other agents."
+        ],
+        "security": "Advisory + read-only on other agents. The ONLY thing it writes is each agent's 'Recently added' changelog (display text) \u2014 nothing functional.",
+        "recent": [
+          "2026-05-22 \u2014 Add Scout \u2014 agent R&D / continuous-improvement worker (twice daily)"
+        ],
+        "watches_all": true
+      }
+    }
+  ]
 }

@@ -63,6 +63,18 @@ header {
 }
 .messages { flex: 1; overflow-y: auto; padding: 14px; display: flex;
   flex-direction: column; gap: 10px; }
+/* "chatting with <agent>" bar — shown only while a single agent is selected */
+.chat-context { display: flex; align-items: center; gap: 9px;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  background: var(--panel); }
+.chat-context .chat-back { flex: 0 0 auto; font-size: 12px; padding: 5px 10px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; }
+.chat-context .chat-back:hover { border-color: var(--accent); color: var(--accent); }
+.chat-context .cc-peer-dot { width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 7px var(--accent); flex: 0 0 auto; }
+.chat-context .cc-peer { font-size: 14px; }
+.chat-context .cc-mode { flex: 1; }
 .bubble { max-width: 85%; padding: 10px 13px; border-radius: 14px;
   white-space: pre-wrap; word-break: break-word; font-size: 15px; }
 .bubble.user { align-self: flex-end; background: var(--accent); color: #fff;
@@ -126,7 +138,7 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
 .only-mobile { display: none; }
 
 .cc-grid { flex: 1; min-height: 0; display: grid;
-  grid-template-columns: 250px 1fr 234px; }
+  grid-template-columns: 310px 1fr 234px; }
 .pane { min-height: 0; display: flex; flex-direction: column;
   overflow: hidden; }
 .pane.roster { border-right: 1px solid var(--line); background: var(--panel); }
@@ -151,6 +163,10 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
 .agent-card .ac-top { display: flex; align-items: center; gap: 7px; }
 .agent-card .ac-name { font-weight: 600; font-size: 14px; flex: 1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* inline rename box that replaces .ac-name on double-click */
+.agent-card .ac-name-input { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
+  color: var(--text); background: var(--bg); border: 1px solid var(--accent);
+  border-radius: 6px; padding: 1px 6px; outline: none; }
 .agent-card .ac-desc { font-size: 12px; color: var(--text); opacity: 0.78;
   margin-top: 4px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; }
@@ -307,6 +323,8 @@ button.icon.active { color: var(--accent); }
 .term-line { white-space: pre-wrap; word-break: break-word; }
 .term-line.term-cmd { color: var(--accent); }
 .term-line.term-err { color: var(--warn); }
+/* live tool-call progress lines (● Read / Edit / Bash …) */
+.term-line.term-tool { color: var(--muted); font-variant-numeric: tabular-nums; }
 .term-input-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   border-top: 1px solid var(--line); background: var(--panel); }
 .term-prompt { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
@@ -317,13 +335,94 @@ button.icon.active { color: var(--accent); }
 .agent-card .ac-top .ac-info { background: none; border: 0; color: var(--muted);
   font-size: 16px; line-height: 1; padding: 0 2px; flex: 0 0 auto; cursor: pointer; }
 .agent-card .ac-top .ac-info:hover { color: var(--accent); }
+.agent-card .ac-top .ac-edit { background: none; border: 0; color: var(--muted);
+  font-size: 13px; line-height: 1; padding: 0 2px; flex: 0 0 auto; cursor: pointer; }
+.agent-card .ac-top .ac-edit:hover { color: var(--accent); }
+.agent-card .ac-top .ac-chat { background: none; border: 0; color: var(--muted);
+  font-size: 13px; line-height: 1; padding: 0 2px; flex: 0 0 auto; cursor: pointer;
+  filter: grayscale(0.4); opacity: 0.85; }
+.agent-card .ac-top .ac-chat:hover { filter: none; opacity: 1; }
 .ai-desc { font-size: 14px; line-height: 1.5; margin: 4px 0 14px; }
 .ai-rows { display: flex; flex-direction: column; gap: 7px; }
 .ai-row { display: flex; gap: 10px; border-bottom: 1px solid var(--line);
-  padding-bottom: 7px; }
+  padding-bottom: 7px; align-items: flex-start; }
 .ai-k { color: var(--muted); flex: 0 0 120px; text-transform: uppercase;
   font-size: 11px; letter-spacing: 0.5px; padding-top: 2px; }
 .ai-v { flex: 1; font-size: 14px; word-break: break-word; }
+.ai-v code.ai-id { background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 1px 6px; font-size: 12px; }
+.ai-v .ai-warn { color: var(--warn); }
+.ai-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ai-chip { font-size: 11px; padding: 2px 8px; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); }
+
+/* --- structured info sheet: summary + labeled sections --- */
+.ai-summary { font-size: 15px; line-height: 1.5; margin: 2px 0 14px;
+  color: var(--text); }
+.ai-sec { margin: 0 0 13px; }
+.ai-sec-h { margin: 0 0 5px; font-size: 11px; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.ai-sec-b { font-size: 14px; line-height: 1.5; }
+.ai-sec-b p { margin: 0 0 6px; }
+.ai-sec-b p:last-child { margin-bottom: 0; }
+.ai-ul { margin: 0; padding-left: 18px; }
+.ai-ul li { margin-bottom: 4px; }
+.ai-warn { color: var(--warn); }
+/* health pill */
+.ai-health { display: inline-block; font-size: 12px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.ai-health.ok  { color: var(--green);  border-color: var(--green); }
+.ai-health.warn{ color: var(--yellow); border-color: var(--yellow); }
+.ai-health.bad { color: var(--red);    border-color: var(--red); }
+.ai-lastrep { margin-top: 5px; }
+/* collapsible technical footer */
+.ai-tech { margin: 6px 0 0; border-top: 1px solid var(--line); padding-top: 10px; }
+.ai-tech > summary { cursor: pointer; color: var(--muted); font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px; list-style: revert; }
+.ai-tech[open] > summary { margin-bottom: 10px; }
+
+/* --- info-sheet details editor --- */
+.ai-edit-details { background: var(--panel2); border: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; padding: 3px 8px; border-radius: 7px;
+  cursor: pointer; }
+.ai-edit-details:hover { color: var(--accent); border-color: var(--accent); }
+.ai-ed-l { display: block; margin: 10px 0 3px; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.ai-ed-ta { width: 100%; resize: vertical; background: var(--bg);
+  color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 9px; font: 13px/1.45 inherit; }
+.ai-ed-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* --- relay graph --- */
+.rg-caption { margin: 0 0 6px; }
+.rg-svg { width: 100%; height: auto; display: block; }
+.rg-spoke { stroke: var(--line); stroke-width: 1; }
+.rg-edge { fill: none; stroke: var(--accent); stroke-width: 2; }
+.rg-any { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.rg-arrowhead { fill: var(--accent); }
+.rg-hub { fill: var(--accent); opacity: 0.92; }
+.rg-hub-t { fill: #fff; font: 700 11px -apple-system, sans-serif;
+  text-anchor: middle; }
+.rg-node { fill: var(--panel2); stroke: var(--accent); stroke-width: 2; }
+.rg-node.rg-watch { stroke: var(--yellow); stroke-dasharray: 3 2; }
+.rg-label { fill: var(--text); font: 11px -apple-system, sans-serif;
+  text-anchor: middle; }
+.rg-legend { margin: 8px 0 0; line-height: 1.6; }
+
+/* rename control inside the info-sheet header */
+.ai-title-text { font-size: inherit; font-weight: inherit; }
+.ai-rename-btn { background: none; border: 0; color: var(--muted);
+  font-size: 14px; padding: 2px 6px; cursor: pointer; }
+.ai-rename-btn:hover { color: var(--accent); }
+.ai-rename-input { width: auto; flex: 1; max-width: 320px; margin: 0;
+  padding: 7px 9px; font-size: 15px; }
+.ai-rename-save, .ai-rename-cancel { padding: 7px 11px; font-size: 13px; }
+#aiName { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* the agent whose chat is currently open */
+.agent-card.active { border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent); background: var(--panel); }
+.agent-card.active .ac-act { border-color: var(--accent); color: var(--accent); }
 
 /* --- progress bar on a running agent card --- */
 .agent-card.running { border-color: var(--accent); }

@@ -48,6 +48,24 @@ def test_task_lifecycle(store):
     assert store.get_task_result(task.id).output["echo"] == "x"
 
 
+def test_latest_result_for_worker(store):
+    """Health uses this — newest result for a worker, by finished_at."""
+    store.put_task_result(TaskResult(
+        task_id="t_old", status=TaskStatus.FAILED, worker="echo-worker",
+        finished_at="2026-01-01T00:00:00Z"))
+    store.put_task_result(TaskResult(
+        task_id="t_new", status=TaskStatus.COMPLETED, worker="echo-worker",
+        finished_at="2026-01-02T00:00:00Z"))
+    store.put_task_result(TaskResult(
+        task_id="t_other", status=TaskStatus.COMPLETED, worker="other-agent",
+        finished_at="2026-09-09T00:00:00Z"))
+    latest = store.latest_result_for_worker("echo-worker")
+    assert latest is not None
+    assert latest.task_id == "t_new"
+    assert latest.status == TaskStatus.COMPLETED
+    assert store.latest_result_for_worker("nobody") is None
+
+
 def test_message_bus_filters_by_correlation(store):
     store.put_message(
         Message(correlation_id="cmd_1", from_agent="echo-worker", to_agent="master")

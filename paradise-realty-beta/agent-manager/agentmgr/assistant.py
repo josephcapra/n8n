@@ -110,11 +110,17 @@ _SYSTEM = (
 )
 
 
-def system_prompt(memory: str = "", connectors: str = "", history: str = "") -> str:
+def system_prompt(
+    memory: str = "", connectors: str = "", history: str = "", agent_focus: str = ""
+) -> str:
     """The assistant's system prompt, optionally with the operator's persistent
     memory, available connectors, and the recent conversation so it 'remembers'
-    both across conversations (memory) and within this one (history)."""
+    both across conversations (memory) and within this one (history). When
+    ``agent_focus`` is set the assistant answers scoped to one specific agent
+    (the left-rail "Message" chat) — placed first so it frames the whole reply."""
     parts = [_SYSTEM]
+    if agent_focus:
+        parts.append(agent_focus)
     if connectors:
         parts.append(connectors)
     if memory:
