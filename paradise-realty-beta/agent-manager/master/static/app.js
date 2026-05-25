@@ -1149,6 +1149,12 @@ const _chatStyles = '<style>'
   + '.ct-bub{padding:8px 11px;border-radius:10px;display:inline-block;max-width:90%;font-size:14px;white-space:pre-wrap}'
   + '.ct-user{text-align:right}.ct-user .ct-bub{background:#1f8a8a;color:#fff}'
   + '.ct-assistant .ct-bub{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}'
+  + '.ct-agent{text-align:right}.ct-agent .ct-bub{background:#3b5bdb;color:#fff}'
+  + '.ct-sys{text-align:center;color:#8a96a3;font-size:12px;margin:8px 0}'
+  + '.chat-live{color:#2ea043;font-size:12px;font-weight:600;margin:2px 0 8px}'
+  + '.chat-reply{display:flex;gap:6px;margin-top:10px}'
+  + '.chat-reply-input{flex:1;margin:0;padding:8px 10px;font-size:13px}'
+  + '.chat-reply-send{padding:8px 14px;font-size:13px}'
   + '</style>';
 
 function _shortUrl(u){ try { const x = new URL(u); return x.pathname === "/" ? x.hostname : x.pathname; } catch (e){ return u || ""; } }
@@ -1195,33 +1201,67 @@ async function loadAgentChats(){
     });
   } catch (e){ box.innerHTML = '<span class="ai-warn">Could not load chats: ' + escapeHtml(e.message) + '</span>'; }
 }
-// Expand/collapse one chat in place; fetch its transcript on first open and cache
-// it, so you can pop chats open and shut and move down the list quickly.
+// Expand/collapse one chat in place; lazy-load its body the first time.
 async function toggleChat(item){
   const body = item.querySelector(".chat-body");
   if (!body.hasAttribute("hidden")){            // open → collapse
     body.setAttribute("hidden", ""); item.classList.remove("open"); return;
   }
   body.removeAttribute("hidden"); item.classList.add("open");
-  if (body.dataset.loaded) return;              // already fetched
+  if (!body.dataset.loaded) loadChatBody(item);
+}
+
+// Render one transcript line (visitor / JoeGPT / live agent / system note).
+function _ctMsg(m){
+  if (m.role === "system") return '<div class="ct-sys">' + _mdLite(m.content) + '</div>';
+  const who = m.role === "user" ? "Visitor" : (m.role === "agent" ? "You (live)" : "JoeGPT");
+  return '<div class="ct-msg ct-' + escapeHtml(m.role) + '"><div class="ct-who">' + who + '</div>'
+    + '<div class="ct-bub">' + _mdLite(m.content) + '</div></div>';
+}
+
+// Fetch + render one chat's transcript, plus a live-agent reply box and a
+// hand-back button. Re-callable so it refreshes after you send a reply.
+async function loadChatBody(item){
+  const body = item.querySelector(".chat-body");
+  const sid = item.getAttribute("data-sid");
   body.innerHTML = '<span class="muted">Loading transcript…</span>';
   try {
-    const sid = item.getAttribute("data-sid");
     const d = await api("GET", "/agents/joegpt/chats/" + encodeURIComponent(sid));
-    let h = '<div class="chat-transcript">';
-    h += ((d.messages || []).map((m) => {
-      const who = m.role === "user" ? "Visitor" : "JoeGPT";
-      return '<div class="ct-msg ct-' + escapeHtml(m.role) + '"><div class="ct-who">' + who + '</div>'
-        + '<div class="ct-bub">' + _mdLite(m.content) + '</div></div>';
-    }).join("")) || '<span class="muted">No messages.</span>';
+    let h = "";
+    if (d.human_active)
+      h += '<div class="chat-live">● Live — you’re handling this chat; JoeGPT is paused.</div>';
+    h += '<div class="chat-transcript">'
+      + (((d.messages || []).map(_ctMsg).join("")) || '<span class="muted">No messages.</span>')
+      + '</div>';
+    h += '<form class="chat-reply">'
+      +    '<input class="chat-reply-input" type="text" autocomplete="off" placeholder="Reply to this visitor as a live agent…">'
+      +    '<button type="submit" class="primary chat-reply-send">Send</button></form>';
+    h += '<div class="chat-actions">';
+    if (d.human_active) h += '<button class="chat-handback">↩︎ Hand back to JoeGPT</button>';
+    if (d.share_url)
+      h += '<button class="chat-share" data-url="' + escapeHtml(d.share_url) + '">🔗 Copy share link</button>'
+        +  '<a class="chat-openshare" href="' + escapeHtml(d.share_url) + '" target="_blank" rel="noopener">Open ↗</a>';
     h += '</div>';
-    if (d.share_url){
-      h += '<div class="chat-actions">'
-        +  '<button class="chat-share" data-url="' + escapeHtml(d.share_url) + '">🔗 Copy share link</button>'
-        +  '<a class="chat-openshare" href="' + escapeHtml(d.share_url) + '" target="_blank" rel="noopener">Open ↗</a></div>';
-    }
     body.innerHTML = h;
     body.dataset.loaded = "1";
+
+    body.querySelector(".chat-reply").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const inp = body.querySelector(".chat-reply-input");
+      const t = inp.value.trim(); if (!t) return;
+      inp.disabled = true;
+      try {
+        await api("POST", "/agents/joegpt/chats/" + encodeURIComponent(sid) + "/reply", { body: { text: t } });
+        body.dataset.loaded = ""; await loadChatBody(item);   // refresh to show it
+      } catch (e){ inp.disabled = false; addBubble("sys", "Reply failed: " + e.message); }
+    };
+    const hb = body.querySelector(".chat-handback");
+    if (hb) hb.onclick = async () => {
+      try {
+        await api("POST", "/agents/joegpt/chats/" + encodeURIComponent(sid) + "/handback", { body: {} });
+        body.dataset.loaded = ""; await loadChatBody(item);
+      } catch (e){ addBubble("sys", "Hand back failed: " + e.message); }
+    };
     const sh = body.querySelector(".chat-share");
     if (sh) sh.onclick = (ev) => {
       ev.stopPropagation();

@@ -427,11 +427,15 @@ def build_app(config: Config | None = None) -> FastAPI:
                      .where(filter=FieldFilter("session_id", "==", session_id)).stream())
             msgs = [m.to_dict() or {} for m in snaps]
             msgs.sort(key=lambda x: x.get("ts", ""))
+            # Include agent + system lines so a live-agent takeover is visible.
             messages = [{
                 "role": m.get("role"), "content": m.get("content"), "ts": m.get("ts"),
                 "search_url": m.get("search_url"), "community_matched": m.get("community_matched"),
-            } for m in msgs if m.get("role") in ("user", "assistant")]
+            } for m in msgs if m.get("role") in ("user", "assistant", "agent", "system")]
+            sess = _joegpt_db().collection("joegpt_sessions").document(session_id).get()
+            human_active = bool((sess.to_dict() or {}).get("human_active")) if sess.exists else False
             return {"session_id": session_id, "messages": messages,
+                    "human_active": human_active,
                     "share_url": _joegpt_share_url(session_id)}
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=f"transcript read failed: {str(exc)[:200]}")
@@ -457,6 +461,68 @@ def build_app(config: Config | None = None) -> FastAPI:
             return {"supported": True, "reachable": False,
                     "overall": "red", "checks": [], "url": base,
                     "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+    def _joegpt_msg(db, session_id: str, role: str, content: str) -> None:
+        # Same shape JoeGPT's logging_client.log_message writes, so the visitor
+        # widget's /poll renders it. Auto-id doc; fresh per-call ts keeps order.
+        from datetime import datetime, timezone
+        db.collection("joegpt_messages").add({
+            "session_id": session_id, "role": role, "content": content,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "tools_called": [], "search_url": None, "listing_count": None,
+            "community_matched": None, "token_count": None,
+        })
+
+    @app.post("/agents/{name}/chats/{session_id}/reply", dependencies=[Depends(require_auth)])
+    def agent_chat_reply(name: str, session_id: str, body: dict = Body(...)) -> dict:
+        """Send a live-agent reply into a JoeGPT customer chat — pauses the bot
+        and records the message so the visitor's widget shows it (via /poll).
+        Writes to Firestore directly (ADC), mirroring the service's take_over,
+        so it needs no admin key and no redeploy."""
+        if name != "joegpt":
+            raise HTTPException(status_code=404, detail="unsupported agent")
+        text = str(body.get("text", "")).strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="empty reply")
+        label = (str(body.get("agent_label") or "").strip() or "Joe")
+        try:
+            from datetime import datetime, timezone
+            db = _joegpt_db()
+            ref = db.collection("joegpt_sessions").document(session_id)
+            snap = ref.get()
+            if not snap.exists:
+                raise HTTPException(status_code=404, detail="unknown session")
+            first = not (snap.to_dict() or {}).get("human_active")
+            now = datetime.now(timezone.utc).isoformat()
+            ref.set({"human_active": True, "agent_label": label, "last_active_at": now}, merge=True)
+            if first:
+                _joegpt_msg(db, session_id, "system", f"{label} has joined the chat.")
+            _joegpt_msg(db, session_id, "agent", text)
+            return {"ok": True, "first_takeover": first}
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"reply failed: {str(exc)[:200]}")
+
+    @app.post("/agents/{name}/chats/{session_id}/handback", dependencies=[Depends(require_auth)])
+    def agent_chat_handback(name: str, session_id: str) -> dict:
+        """Hand a JoeGPT session back to the bot (clears human_active)."""
+        if name != "joegpt":
+            raise HTTPException(status_code=404, detail="unsupported agent")
+        try:
+            from datetime import datetime, timezone
+            db = _joegpt_db()
+            ref = db.collection("joegpt_sessions").document(session_id)
+            snap = ref.get()
+            d = snap.to_dict() or {} if snap.exists else {}
+            if d.get("human_active"):
+                label = d.get("agent_label") or "The agent"
+                _joegpt_msg(db, session_id, "system",
+                            f"{label} has left. JoeGPT is back to help.")
+            ref.set({"human_active": False}, merge=True)
+            return {"ok": True}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"handback failed: {str(exc)[:200]}")
 
     @app.post("/agents", dependencies=[Depends(require_auth)])
     def create_agent(spec: NewAgentRequest) -> dict:
