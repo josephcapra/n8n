@@ -1133,16 +1133,20 @@ function statusLabel(s, group) {
 
 /* ---- JoeGPT customer chats (info sheet) ---- */
 const _chatStyles = '<style>'
-  + '.chat-row{display:flex;gap:10px;align-items:center;padding:8px 6px;border-top:1px solid rgba(255,255,255,.08);cursor:pointer}'
+  + '.chat-item{border-top:1px solid rgba(255,255,255,.08)}'
+  + '.chat-row{display:flex;gap:9px;align-items:center;padding:8px 6px;cursor:pointer}'
   + '.chat-row:hover{background:rgba(255,255,255,.05)}'
-  + '.chat-when{font-size:12px;color:#8a96a3;min-width:62px}'
-  + '.chat-meta{flex:1;font-size:13px}.chat-open{font-size:12px;color:#58a6ff}'
-  + '.chat-actions{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}'
+  + '.chat-caret{font-size:11px;color:#8a96a3;width:12px;flex:0 0 auto;transition:transform .12s}'
+  + '.chat-item.open>.chat-row .chat-caret{transform:rotate(90deg)}'
+  + '.chat-when{font-size:12px;color:#8a96a3;min-width:98px;flex:0 0 auto}'
+  + '.chat-meta{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.chat-body{padding:2px 6px 12px 27px}'
+  + '.chat-actions{display:flex;gap:8px;align-items:center;margin:10px 0 2px;flex-wrap:wrap}'
   + '.chat-actions button,.chat-actions a{font:inherit;font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;padding:5px 11px;border-radius:7px;text-decoration:none}'
   + '.chat-share{background:#1f8a8a!important;border-color:#1f8a8a!important;color:#fff!important}'
-  + '.chat-transcript{max-height:360px;overflow-y:auto;padding-right:4px}'
+  + '.chat-transcript{max-height:300px;overflow-y:auto;padding-right:4px}'
   + '.ct-msg{margin:9px 0}.ct-who{font-size:11px;color:#8a96a3;margin-bottom:2px}'
-  + '.ct-bub{padding:8px 11px;border-radius:10px;display:inline-block;max-width:90%;font-size:14px}'
+  + '.ct-bub{padding:8px 11px;border-radius:10px;display:inline-block;max-width:90%;font-size:14px;white-space:pre-wrap}'
   + '.ct-user{text-align:right}.ct-user .ct-bub{background:#1f8a8a;color:#fff}'
   + '.ct-assistant .ct-bub{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}'
   + '</style>';
@@ -1156,16 +1160,27 @@ function _mdLite(s){
   s = s.replace(/^#{1,6}\s*(.+)$/gm, "<b>$1</b>");
   return s.replace(/\n/g, "<br>");
 }
+// Absolute date + time so chats are easy to scan/reference (e.g. "May 25, 2:30 PM").
+function _fmtChatWhen(iso){
+  const t = Date.parse(iso || ""); if (isNaN(t)) return "—";
+  return new Date(t).toLocaleString(undefined,
+    { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+// One collapsible chat: a header row (caret + date/time + the visitor's question)
+// and a body that lazy-loads the transcript the first time it's opened.
 function _chatRow(s){
-  const when = timeAgo(s.last_active_at || s.created_at) || "";
-  // The visitor's question is the useful label; fall back to a msg count.
+  const when = _fmtChatWhen(s.last_active_at || s.created_at);
   const meta = s.preview
     ? escapeHtml(s.preview)
     : ((s.total_messages || 0) + " msgs" + (s.page_url ? " · " + escapeHtml(_shortUrl(s.page_url)) : ""));
-  return '<div class="chat-row" data-sid="' + escapeHtml(s.session_id) + '">'
-    + '<span class="chat-when">' + escapeHtml(when) + '</span>'
-    + '<span class="chat-meta">' + meta + '</span>'
-    + '<span class="chat-open">View ›</span></div>';
+  return '<div class="chat-item" data-sid="' + escapeHtml(s.session_id) + '">'
+    + '<div class="chat-row">'
+    +   '<span class="chat-caret">&#9656;</span>'
+    +   '<span class="chat-when">' + escapeHtml(when) + '</span>'
+    +   '<span class="chat-meta">' + meta + '</span>'
+    + '</div>'
+    + '<div class="chat-body" hidden></div>'
+    + '</div>';
 }
 async function loadAgentChats(){
   const box = document.getElementById("aiChats"); if (!box) return;
@@ -1175,40 +1190,47 @@ async function loadAgentChats(){
     const list = d.sessions || [];
     if (!list.length){ box.innerHTML = '<span class="muted">No customer conversations yet.</span>'; return; }
     box.innerHTML = list.map(_chatRow).join("");
-    box.querySelectorAll(".chat-row").forEach((row) => {
-      row.onclick = () => openChatTranscript(row.getAttribute("data-sid"));
+    box.querySelectorAll(".chat-item").forEach((item) => {
+      item.querySelector(".chat-row").onclick = () => toggleChat(item);
     });
   } catch (e){ box.innerHTML = '<span class="ai-warn">Could not load chats: ' + escapeHtml(e.message) + '</span>'; }
 }
-async function openChatTranscript(sid){
-  const box = document.getElementById("aiChats"); if (!box) return;
-  box.innerHTML = '<span class="muted">Loading transcript…</span>';
+// Expand/collapse one chat in place; fetch its transcript on first open and cache
+// it, so you can pop chats open and shut and move down the list quickly.
+async function toggleChat(item){
+  const body = item.querySelector(".chat-body");
+  if (!body.hasAttribute("hidden")){            // open → collapse
+    body.setAttribute("hidden", ""); item.classList.remove("open"); return;
+  }
+  body.removeAttribute("hidden"); item.classList.add("open");
+  if (body.dataset.loaded) return;              // already fetched
+  body.innerHTML = '<span class="muted">Loading transcript…</span>';
   try {
+    const sid = item.getAttribute("data-sid");
     const d = await api("GET", "/agents/joegpt/chats/" + encodeURIComponent(sid));
-    let h = '<div class="chat-actions"><button class="chat-back">‹ Back</button>';
-    if (d.share_url){
-      h += '<button class="chat-share" data-url="' + escapeHtml(d.share_url) + '">🔗 Copy share link</button>'
-        +  '<a class="chat-openshare" href="' + escapeHtml(d.share_url) + '" target="_blank" rel="noopener">Open ↗</a>';
-    }
-    h += '</div><div class="chat-transcript">';
+    let h = '<div class="chat-transcript">';
     h += ((d.messages || []).map((m) => {
       const who = m.role === "user" ? "Visitor" : "JoeGPT";
       return '<div class="ct-msg ct-' + escapeHtml(m.role) + '"><div class="ct-who">' + who + '</div>'
         + '<div class="ct-bub">' + _mdLite(m.content) + '</div></div>';
     }).join("")) || '<span class="muted">No messages.</span>';
     h += '</div>';
-    box.innerHTML = h;
-    const back = box.querySelector(".chat-back"); if (back) back.onclick = loadAgentChats;
-    const sh = box.querySelector(".chat-share");
-    if (sh) sh.onclick = () => {
+    if (d.share_url){
+      h += '<div class="chat-actions">'
+        +  '<button class="chat-share" data-url="' + escapeHtml(d.share_url) + '">🔗 Copy share link</button>'
+        +  '<a class="chat-openshare" href="' + escapeHtml(d.share_url) + '" target="_blank" rel="noopener">Open ↗</a></div>';
+    }
+    body.innerHTML = h;
+    body.dataset.loaded = "1";
+    const sh = body.querySelector(".chat-share");
+    if (sh) sh.onclick = (ev) => {
+      ev.stopPropagation();
       navigator.clipboard.writeText(sh.getAttribute("data-url")).then(() => {
         const o = sh.textContent; sh.textContent = "✓ Copied!"; setTimeout(() => { sh.textContent = o; }, 1500);
       }).catch(() => { sh.textContent = "Copy failed — select & copy manually"; });
     };
   } catch (e){
-    box.innerHTML = '<span class="ai-warn">Could not load transcript: ' + escapeHtml(e.message) + '</span> '
-      + '<button class="chat-back">‹ Back</button>';
-    const back = box.querySelector(".chat-back"); if (back) back.onclick = loadAgentChats;
+    body.innerHTML = '<span class="ai-warn">Could not load transcript: ' + escapeHtml(e.message) + '</span>';
   }
 }
 

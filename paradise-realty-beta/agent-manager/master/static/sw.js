@@ -1,5 +1,5 @@
 /* Minimal service worker — caches the PWA shell, never caches API calls. */
-const CACHE = "agentmgr-v24";
+const CACHE = "agentmgr-v25";
 const SHELL = [
   "/",
   "/static/app.js",
