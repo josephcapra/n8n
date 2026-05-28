@@ -1,0 +1,7 @@
+# Live Brokermint session snapshot (contains the auth cookie) — never commit.
+bm_state.json
+# 2FA hand-off + screenshots + local creds
+shots/
+*.png
+.env
+node_modules/
