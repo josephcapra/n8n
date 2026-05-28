@@ -83,6 +83,31 @@ header {
   border-bottom-left-radius: 4px; }
 .bubble.sys { align-self: center; background: none; color: var(--muted);
   font-size: 13px; }
+/* "thinking…" bubble — appears the moment a message is sent and stays until
+   the reply lands, so it's obvious the agent is working (not frozen). */
+.bubble.thinking { align-self: flex-start; background: var(--panel2);
+  border-bottom-left-radius: 4px; display: flex; align-items: center; gap: 8px;
+  padding: 9px 13px; opacity: 0.96; }
+.bubble.thinking .tlabel { font-size: 13px; color: var(--muted); }
+.bubble.thinking .tdots { display: inline-flex; gap: 4px; }
+.bubble.thinking .tdots span { width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted); display: inline-block;
+  animation: tdot 1.2s infinite ease-in-out both; }
+.bubble.thinking .tdots span:nth-child(2) { animation-delay: .15s; }
+.bubble.thinking .tdots span:nth-child(3) { animation-delay: .30s; }
+@keyframes tdot {
+  0%, 80%, 100% { transform: scale(0.65); opacity: 0.45; }
+  40%           { transform: scale(1);    opacity: 1;    }
+}
+/* same dot animation inline inside a JoeGPT reply form while sending */
+.chat-reply-thinking { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); margin-left: 6px; }
+.chat-reply-thinking .tdots { display: inline-flex; gap: 3px; }
+.chat-reply-thinking .tdots span { width: 5px; height: 5px; border-radius: 50%;
+  background: var(--muted); display: inline-block;
+  animation: tdot 1.2s infinite ease-in-out both; }
+.chat-reply-thinking .tdots span:nth-child(2) { animation-delay: .15s; }
+.chat-reply-thinking .tdots span:nth-child(3) { animation-delay: .30s; }
 .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px;
   border-top: 1px solid var(--line); background: var(--panel); }
 .composer-row { display: flex; gap: 8px; align-items: center; }
@@ -154,6 +179,11 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
   font-size: 11px; padding: 1px 7px; letter-spacing: 0; }
 
 /* roster */
+.agent-filter { margin: 8px 10px 6px; padding: 7px 11px; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+  color: var(--text); outline: none; }
+.agent-filter::placeholder { color: var(--muted); }
+.agent-filter:focus { border-color: var(--muted); }
 .agent-list { flex: 1; overflow-y: auto; padding: 0 10px 10px;
   display: flex; flex-direction: column; gap: 7px; }
 .agent-card { background: var(--panel2); border: 1px solid var(--line);
@@ -174,6 +204,10 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
 .agent-card .ac-act { margin-top: 8px; width: 100%; font-size: 12px;
   padding: 6px; background: var(--panel); border: 1px solid var(--line); }
 .agent-card .ac-act:hover { border-color: var(--accent); color: var(--accent); }
+/* backup card: two side-by-side action buttons (back up / restore) */
+.agent-card .ac-act-row { display: flex; gap: 6px; margin-top: 8px; }
+.agent-card .ac-act-row .ac-act { margin-top: 0; }
+.agent-card .ac-act.ac-act-alt:hover { border-color: var(--danger, #e74c3c); color: var(--danger, #e74c3c); }
 .sdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .sdot.online, .sdot.ready, .sdot.deployed { background: var(--green);
   box-shadow: 0 0 7px var(--green); }

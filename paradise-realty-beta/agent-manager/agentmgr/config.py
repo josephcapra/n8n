@@ -58,6 +58,19 @@ class Config:
     # jazzysphotos-site agent: the local Astro git repo it edits + publishes.
     jazzysphotos_dir: str = "/Users/User/jazzysphotos"
     jazzysphotos_timeout_s: float = 600.0   # npm build + git push can run minutes
+    # listing-report agent: the spark/ dir holding the Zillow scraper + report scripts.
+    listing_report_dir: str = "/Users/User/paradise-realty/spark"
+    listing_report_timeout_s: float = 1800.0  # headed Zillow scrape + gen + email
+    # zoom-insights agent: dir holding the Zoom transcript pull + analysis scripts.
+    zoom_insights_dir: str = "/Users/User/zoom-insights"
+    zoom_insights_timeout_s: float = 1800.0  # transcript pull + Claude analysis + email
+    # cfo agent: dir holding the QuickBooks pull + Claude analysis + emailer.
+    cfo_dir: str = "/Users/User/quickbooks-cfo"
+    cfo_timeout_s: float = 600.0             # QBO report pulls + Claude digest + email
+    # backup agent: dir holding backup-agents.sh + restore-agents.sh (tar all
+    # agents -> gs://paradise-agents-backup; restore the latest on demand).
+    backup_dir: str = "/Users/User/paradise-realty"
+    backup_timeout_s: float = 1800.0         # tar + GCS upload (or download + extract) of all agents
     # Catastrophic commands that ALWAYS need fresh approval, even mid-session.
     always_confirm_patterns: tuple[str, ...] = (
         "rm -rf /", "rm -rf ~", "rm -rf *", "mkfs", "dd if=", "diskutil erase",
@@ -75,7 +88,7 @@ class Config:
 
     # --- LLM router (Phase 3) ------------------------------------------
     llm_provider: str = "mock"              # "anthropic" | "openai" | "google" | "mock"
-    anthropic_model: str = "claude-opus-4-7"
+    anthropic_model: str = "claude-sonnet-4-6"
     openai_model: str = "gpt-4o-mini"        # cheap default; override per account
     google_model: str = "gemini-2.5-flash"   # cheap default for the chat fast-path
     anthropic_api_key: str | None = None    # from Secret Manager — never in code
@@ -137,6 +150,14 @@ def load_config() -> Config:
         crm_task_timeout_s=float(_env("AGENTMGR_CRM_TIMEOUT_S", "1200")),
         jazzysphotos_dir=_env("AGENTMGR_JAZZY_DIR", "/Users/User/jazzysphotos"),
         jazzysphotos_timeout_s=float(_env("AGENTMGR_JAZZY_TIMEOUT_S", "600")),
+        listing_report_dir=_env("AGENTMGR_LISTING_REPORT_DIR", "/Users/User/paradise-realty/spark"),
+        listing_report_timeout_s=float(_env("AGENTMGR_LISTING_REPORT_TIMEOUT_S", "1800")),
+        zoom_insights_dir=_env("AGENTMGR_ZOOM_INSIGHTS_DIR", "/Users/User/zoom-insights"),
+        zoom_insights_timeout_s=float(_env("AGENTMGR_ZOOM_INSIGHTS_TIMEOUT_S", "1800")),
+        cfo_dir=_env("AGENTMGR_CFO_DIR", "/Users/User/quickbooks-cfo"),
+        cfo_timeout_s=float(_env("AGENTMGR_CFO_TIMEOUT_S", "600")),
+        backup_dir=_env("AGENTMGR_BACKUP_DIR", "/Users/User/paradise-realty"),
+        backup_timeout_s=float(_env("AGENTMGR_BACKUP_TIMEOUT_S", "1800")),
         always_confirm_patterns=tuple(
             p.strip()
             for p in (_env("AGENTMGR_ALWAYS_CONFIRM") or "").split(",")
@@ -149,7 +170,7 @@ def load_config() -> Config:
         pwa_token_ttl_s=float(_env("AGENTMGR_PWA_TOKEN_TTL_S", "3600")),
         planner=_env("AGENTMGR_PLANNER", "rule"),
         llm_provider=_env("AGENTMGR_LLM_PROVIDER", "mock"),
-        anthropic_model=_env("AGENTMGR_ANTHROPIC_MODEL", "claude-opus-4-7"),
+        anthropic_model=_env("AGENTMGR_ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         openai_model=_env("AGENTMGR_OPENAI_MODEL", "gpt-4o-mini"),
         google_model=_env("AGENTMGR_GOOGLE_MODEL", "gemini-2.5-flash"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),

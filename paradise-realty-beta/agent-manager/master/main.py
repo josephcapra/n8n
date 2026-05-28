@@ -442,14 +442,20 @@ def build_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/agents/{name}/health", dependencies=[Depends(require_auth)])
     def agent_health(name: str) -> dict:
-        """Live health of the chatbot service — proxies JoeGPT's /status.json
-        (public; no Firestore needed) so the info sheet can show the stoplight
-        even when other things are down."""
-        if name != "joegpt":
+        """Live health of a deployed Cloud Run service — proxies its public
+        /status.json so the info sheet can show the stoplight even when other
+        things are down. Covers JoeGPT and the Google Ads lead-capture hook."""
+        _proxies = {
+            "joegpt": ("JOEGPT_SERVICE_URL",
+                       "https://joegpt-383923649216.us-east1.run.app"),
+            "google-ads": ("GOOGLE_ADS_HOOK_URL",
+                           "https://google-ads-lead-hook-383923649216.us-east1.run.app"),
+        }
+        if name not in _proxies:
             return {"supported": False}
         import httpx
-        base = os.environ.get("JOEGPT_SERVICE_URL",
-                              "https://joegpt-383923649216.us-east1.run.app").rstrip("/")
+        env_var, default_url = _proxies[name]
+        base = os.environ.get(env_var, default_url).rstrip("/")
         try:
             r = httpx.get(f"{base}/status.json", timeout=15)
             r.raise_for_status()
@@ -685,7 +691,16 @@ def build_app(config: Config | None = None) -> FastAPI:
     def cloudrun_jobs() -> dict:
         """List the project's Cloud Run jobs so the UI can pre-populate a picker."""
         try:
-            jobs = _get_cloudrun_admin(app).list_jobs()
+            admin = _get_cloudrun_admin(app)
+            regions = {a.region for a in app.state.registry.all()
+                       if a.runtime == "cloudrun-job" and a.region}
+            regions.add(cfg.region)
+            jobs, seen = [], set()
+            for region in regions:
+                for j in admin.list_jobs(region=region):
+                    if j["name"] not in seen:
+                        seen.add(j["name"])
+                        jobs.append(j)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=502,
@@ -706,10 +721,14 @@ def build_app(config: Config | None = None) -> FastAPI:
             )
         try:
             admin = _get_cloudrun_admin(app)
-            known = {j["name"] for j in admin.list_jobs()}
+            # Run in the job's registered region (jobs span us-east1/us-central1).
+            region = next((a.region for a in app.state.registry.all()
+                           if a.runtime == "cloudrun-job"
+                           and (a.job_name == job_name or a.name == job_name) and a.region), None)
+            known = {j["name"] for j in admin.list_jobs(region=region)}
             if job_name not in known:
                 raise HTTPException(status_code=404, detail=f"no such job: {job_name}")
-            execution = admin.run_job(job_name)
+            execution = admin.run_job(job_name, region=region)
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -820,6 +839,42 @@ def build_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/website/result/{task_id}", dependencies=[Depends(require_auth)])
     def website_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "status": result.status,
+            "output": result.output or {},
+            "error": result.error,
+        }
+
+    # --- backup / restore ------------------------------------------------
+    # The 'backup' agent's two left-panel buttons dispatch here. backup_now is
+    # safe (archive + upload + email). restore_* OVERWRITE local agent files, so
+    # the Mac daemon blocks them on the approval gate (the approval banner / Face
+    # ID is the operator's "prompt to restore"); dispatch returns the task id
+    # immediately and the UI polls /backup/result.
+    @app.post("/backup/dispatch", dependencies=[Depends(require_auth)])
+    def backup_dispatch(body: dict = Body(...)) -> dict:
+        action = str(body.get("action", "status")).strip()
+        valid = {"status", "list_backups", "restore_preview",
+                 "backup_now", "restore_latest", "restore_date"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        payload = {"action": action}
+        if "date" in body:   # only used by restore_date; no arbitrary fields forwarded
+            payload["date"] = body["date"]
+        task = TaskSpec(
+            agent="backup", kind="backup", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("backup action dispatched", extra={"task_id": task.id, "action": action})
+        return {"task_id": task.id, "action": action}
+
+    @app.get("/backup/result/{task_id}", dependencies=[Depends(require_auth)])
+    def backup_result(task_id: str) -> dict:
         result = store.get_task_result(task_id)
         if result is None:
             return {"ready": False}
@@ -1357,7 +1412,16 @@ def _deployed_job_names(app: FastAPI) -> set | None:
     if cached and now - cached[0] < 60:
         return cached[1]
     try:
-        names = {j["name"] for j in _get_cloudrun_admin(app).list_jobs()}
+        admin = _get_cloudrun_admin(app)
+        # Jobs span regions (newhome-source-updater is us-central1, the rest
+        # us-east1), so list every region the registry references, not just the
+        # configured default — otherwise off-region jobs show as 'offline'.
+        regions = {a.region for a in app.state.registry.all()
+                   if a.runtime == "cloudrun-job" and a.region}
+        regions.add(app.state.config.region)
+        names = set()
+        for region in regions:
+            names.update(j["name"] for j in admin.list_jobs(region=region))
     except Exception:  # noqa: BLE001 - status is best-effort
         names = None
     app.state.jobs_cache = (now, names)

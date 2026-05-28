@@ -614,6 +614,176 @@ def process_joe_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
+# --- Listing-Report: per-listing market + Zillow-engagement reports --------
+
+_LISTING_REPORT_ACTIONS = frozenset(
+    {"report_only", "full_run", "generate_only", "pdf", "gdoc_only", "pdf_only"})
+
+
+def process_listing_report_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Run the per-listing activity report pipeline via run_listing_report.sh.
+
+    The scripts live in ``cfg.listing_report_dir`` (spark/): a Node Zillow
+    engagement scraper (views/saves off the logged-in ~/.zillow-browser
+    profile), a Python report generator (Beaches MLS comps + CMA), and a
+    SendGrid emailer. ``report_only`` (default) scrapes + regenerates; the
+    other actions skip the scrape (``generate_only``), only email
+    (``email_only``), or do the whole thing incl. email (``full_run``). Reads
+    MLS + Zillow + sends one internal email — not destructive, not sensitive.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "listing-report"
+    action = str(task.payload.get("action", "report_only")).strip()
+    if action not in _LISTING_REPORT_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown listing-report action {action!r}; valid: {sorted(_LISTING_REPORT_ACTIONS)}"))
+        return
+    command = f"bash run_listing_report.sh {action}"
+    log.info("EXECUTING listing-report action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.listing_report_dir, cfg.listing_report_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("listing-report action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Zoom Insights: call-transcript analysis + per-agent lead tracking -----
+
+# action -> env prefix for run_zoom_report.sh
+_ZOOM_ACTIONS = {
+    "daily": "DAYS=2",          # default: prior day's calls, emailed
+    "two_week": "DAYS=14",      # 2-week rollup, emailed
+    "dry_run": "DAYS=14 DRY_RUN=1",  # build files, don't email
+    # 'summary' = build the per-agent rollup (no email) and RETURN it in the
+    # result so other agents can query Zoom call activity through the Master.
+    "summary": "DAYS=7 DRY_RUN=1",
+}
+
+
+def process_zoom_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Run the Zoom Insights pipeline: pull call transcripts (admin API across
+    all agents when ZOOM_* creds are present, else the signed-in web session) ->
+    Claude customer-interaction analysis -> email a report with per-agent lead
+    tally, hot-lead alerts, and a CRM-ready lead CSV. Reads Zoom + sends ONE
+    internal email; not destructive."""
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "zoom-insights"
+    action = str(task.payload.get("action", "daily")).strip()
+    if action not in _ZOOM_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown zoom action {action!r}; valid: {sorted(_ZOOM_ACTIONS)}"))
+        return
+    command = f"{_ZOOM_ACTIONS[action]} bash run_zoom_report.sh"
+    log.info("EXECUTING zoom-insights action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.zoom_insights_dir, cfg.zoom_insights_timeout_s)
+    output["action"] = action
+    # 'summary' surfaces the per-agent Zoom rollup so OTHER agents can consume
+    # it through the Master, and (optionally) relays it onward to payload.relay_to
+    # (e.g. Taylor) — same inter-agent pattern as Joe's CRM Report -> Taylor.
+    if action == "summary" and output.get("exit_code") == 0:
+        try:
+            import json as _json
+            p = os.path.join(cfg.zoom_insights_dir, "data", "zoom_weekly_by_agent.json")
+            summary = _json.loads(open(p).read())
+            output["summary"] = summary
+            output.pop("stdout", None)  # callers want the structured rollup, not log noise
+            relay_to = task.payload.get("relay_to")
+            if relay_to:
+                store.put_message(Message(
+                    correlation_id=task.correlation_id,
+                    from_agent="zoom-insights", to_agent=relay_to,
+                    payload={"action": task.payload.get("relay_action", "weekly_send"),
+                             "zoom_metrics": summary},
+                    relay_depth=task.depth + 1))
+                output["relayed_to"] = relay_to
+                log.info("zoom-insights relayed summary", extra={"to": relay_to})
+        except Exception as e:  # noqa: BLE001
+            output["summary_error"] = str(e)[:120]
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("zoom-insights action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- CFO: QuickBooks Online financial analysis + digest --------------------
+
+# action -> run_cfo.py subcommand. 'ask' and 'learn' take free text (handled below).
+_CFO_ACTIONS = {
+    "email_report": ["report"],   # default — pull, analyze, EMAIL the digest (a card click)
+    "preview": ["preview"],       # pull + analyze, print without emailing
+    "check": ["check"],           # confirm the QuickBooks connection (no LLM)
+    "snapshot": ["snapshot"],     # dump the flattened financials (debug)
+    "recurring": ["recurring"],   # recurring-expense review (need/plan-fit/cheaper alt); emails
+    "alerts": ["alerts"],         # anomaly + suggestion scan; emails only on a finding
+    "improve": ["improve"],       # self-review: propose new features (emails proposals)
+}
+
+
+def process_cfo_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """CFO agent — pulls QuickBooks Online financials and reports on them.
+
+    'email_report' (default — what a GUI click runs) pulls P&L (month/prior/YTD/
+    12-mo trend), cash flow, balance sheet, and AR/AP aging, then emails Joe a
+    Claude-written CFO digest. 'preview' prints it without emailing. 'ask'
+    answers a free-text finance question (payload.question) against live QBO
+    data. 'check' confirms the connection. Shells out to run_cfo.py in
+    cfg.cfo_dir, which reads the saved QBO tokens + keys. Read-only; not sensitive.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "cfo"
+    # A free-text chat turn (chat_mode "direct") arrives as {"goal": ...} with no
+    # action -> treat it as a finance question. A bare trigger (no goal) emails the
+    # digest. An explicit payload.action always wins.
+    action = str(task.payload.get("action") or "").strip()
+    if not action:
+        action = "ask" if (task.payload.get("question") or task.payload.get("goal")) else "email_report"
+
+    if action == "ask":
+        question = str(task.payload.get("question") or task.payload.get("goal") or "").strip()
+        if not question:
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+                error="cfo 'ask' needs a 'question' (or 'goal') in the payload"))
+            return
+        command = f"python3 run_cfo.py ask {shlex.quote(question)}"
+    elif action == "learn":
+        note = str(task.payload.get("note") or task.payload.get("question")
+                   or task.payload.get("goal") or "").strip()
+        if not note:
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+                error="cfo 'learn' needs a 'note' (fact to remember) in the payload"))
+            return
+        command = f"python3 run_cfo.py learn {shlex.quote(note)}"
+    elif action in _CFO_ACTIONS:
+        command = "python3 run_cfo.py " + " ".join(_CFO_ACTIONS[action])
+    else:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown cfo action {action!r}; valid: {sorted(_CFO_ACTIONS) + ['ask', 'learn']}"))
+        return
+
+    log.info("EXECUTING cfo action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.cfo_dir, cfg.cfo_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("cfo action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
 # --- Scout: agent R&D / continuous improvement (advisory) -----------------
 
 _SCOUT_ACTIONS = {
@@ -647,6 +817,135 @@ def process_scout_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
         task_id=task.id, status=status, output=output, worker=worker,
         error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
     log.info("Scout action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Spend Monitor: Claude Code cost digest (advisory) -------------------
+
+_SPEND_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "tools", "spend_report.py")
+_SPEND_ACTIONS = {
+    "report": "--report",      # build + EMAIL the digest + save to the report store
+    "research": "--no-email",  # build + save to the report store only (no email)
+}
+
+
+def process_spend_report_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Spend Monitor — Claude Code token/cost digest (advisory).
+
+    'report' builds the weekly spend digest, EMAILS it, and saves it to the
+    command-center report store; 'research' builds + saves without emailing.
+    Reads this Mac's ~/.claude/projects session logs; never changes any model.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "spend-monitor"
+    action = str(task.payload.get("action", "report")).strip()
+    if action not in _SPEND_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: {sorted(_SPEND_ACTIONS)}"))
+        return
+    command = f"python3 {shlex.quote(_SPEND_SCRIPT)} {_SPEND_ACTIONS[action]}"
+    log.info("EXECUTING Spend Monitor action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, None, 600.0)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Spend Monitor action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Agent Backup / Restore (weekly tar of all agents -> GCS) -------------
+
+# Safe actions auto-run; restore_* OVERWRITE local files so each is gated.
+_BACKUP_ACTIONS = frozenset({
+    "status", "list_backups", "restore_preview",   # read-only
+    "backup_now",                                   # writes GCS + emails (safe)
+    "restore_latest", "restore_date",               # SENSITIVE — gated
+})
+_BACKUP_RESTORE = frozenset({"restore_latest", "restore_date"})
+
+
+def process_backup_task(task: TaskSpec, store: StateStore, gate: ApprovalGate,
+                        cfg: Config) -> None:
+    """Agent Backup — tar every agent dir to gs://paradise-agents-backup, and
+    restore the most recent backup on demand.
+
+    Safe actions auto-run: ``backup_now`` archives + uploads + emails (what the
+    'Back up now' button runs); ``status`` / ``list_backups`` list the available
+    backup dates; ``restore_preview`` is a dry run showing what a restore would
+    overwrite. The ``restore_*`` actions OVERWRITE the local agent files, so each
+    blocks on the approval gate FIRST (the GUI 'Restore' button's Face-ID prompt)
+    — on denial nothing is touched. Wraps backup-agents.sh / restore-agents.sh
+    in cfg.backup_dir.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "backup"
+    action = str(task.payload.get("action", "status")).strip()
+
+    def fail(msg: str) -> None:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker, error=msg))
+
+    if action not in _BACKUP_ACTIONS:
+        fail(f"unknown backup action {action!r}; valid: {sorted(_BACKUP_ACTIONS)}")
+        return
+
+    # Map the action to a shell command + a success note for the GUI bubble.
+    if action == "backup_now":
+        command, note_ok = (
+            "bash backup-agents.sh",
+            "Backup complete — every agent archived to "
+            "gs://paradise-agents-backup/weekly/<date>/ (and the latest/ mirror), "
+            "with a summary emailed.")
+    elif action in ("status", "list_backups"):
+        command, note_ok = ("bash restore-agents.sh list",
+                            "Available backup dates listed above.")
+    elif action == "restore_preview":
+        command, note_ok = ("bash restore-agents.sh",   # no arg -> dry run
+                            "Dry run — the archives above WOULD be restored. "
+                            "Nothing was changed.")
+    else:  # restore_latest / restore_date -> SENSITIVE: gate, then run
+        if action == "restore_date":
+            date = str(task.payload.get("date", "")).strip()
+            if not date:
+                fail("restore_date needs a 'date' (YYYY-MM-DD) in the payload")
+                return
+            target, label = date, f"the backup from {date}"
+        else:
+            target, label = "latest", "the most recent backup"
+        try:
+            gate.request_approval(
+                f"backup: restore {target}",
+                {"action": action, "source": target,
+                 "warning": "OVERWRITES local agent files with this backup"},
+            )
+        except ApprovalDenied as exc:
+            fail(f"restore denied by operator: {exc}")
+            return
+        except ApprovalNotProvisioned as exc:
+            fail(f"approval gate not provisioned: {exc}")
+            return
+        # Approved -> run non-interactively (skip the script's own typed-YES prompt).
+        command = f"RESTORE_CONFIRM=YES bash restore-agents.sh {shlex.quote(target)}"
+        note_ok = (f"Restore complete — all agents restored from {label}. "
+                   "Restart the Master so it reloads agents.json.")
+
+    log.info("EXECUTING backup action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.backup_dir, cfg.backup_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    if status == TaskStatus.COMPLETED:
+        output["note"] = note_ok
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("backup action finished",
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
@@ -1202,7 +1501,9 @@ def run_agent(config: Config | None = None) -> None:
     # and the jazzysphotos.com site agent ('jazzysphotos-site').
     handled = (cfg.local_agent_name, "assistant", "security-health",
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
-               "incentive-social", "taylor", "joe-crm-report", "scout")
+               "incentive-social", "taylor", "joe-crm-report", "scout",
+               "listing-report", "zoom-insights", "cfo", "spend-monitor",
+               "backup")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -1228,6 +1529,16 @@ def run_agent(config: Config | None = None) -> None:
                         process_joe_crm_task(task, store, cfg)
                     elif task.kind == "improvement":
                         process_scout_task(task, store, cfg)
+                    elif task.kind == "listing_report":
+                        process_listing_report_task(task, store, cfg)
+                    elif task.kind == "zoom_insights":
+                        process_zoom_task(task, store, cfg)
+                    elif task.kind == "cfo":
+                        process_cfo_task(task, store, cfg)
+                    elif task.kind == "spend_report":
+                        process_spend_report_task(task, store, cfg)
+                    elif task.kind == "backup":
+                        process_backup_task(task, store, gate, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

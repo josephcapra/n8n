@@ -203,12 +203,55 @@ function curThread() {
   }
   return threads[k];
 }
-// Re-render the message pane from the active thread's stored bubbles.
+// Re-render the message pane from the active thread's stored bubbles. If the
+// active thread is mid-request, also paint the thinking bubble back in so
+// switching peers and switching back doesn't lose the "still working" cue.
 function renderThread() {
   const m = $("messages");
   m.innerHTML = "";
-  curThread().bubbles.forEach((b) => appendBubbleDom(b.role, b.text, b.atts));
+  const th = curThread();
+  th.bubbles.forEach((b) => appendBubbleDom(b.role, b.text, b.atts));
+  if (th.thinking) appendThinkingDom(th.thinkingLabel);
   m.scrollTop = m.scrollHeight;
+}
+
+/* ---- "thinking…" indicator (so the chat doesn't look frozen) ----
+   Tracked per-thread on the thread object (th.thinking + th.thinkingLabel);
+   the DOM bubble is transient and lives in #messages until the reply lands. */
+function appendThinkingDom(label) {
+  const div = document.createElement("div");
+  div.className = "bubble thinking";
+  div.dataset.role = "thinking";
+  div.innerHTML =
+    '<span class="tdots"><span></span><span></span><span></span></span>' +
+    '<span class="tlabel"></span>';
+  div.querySelector(".tlabel").textContent = label || "thinking…";
+  $("messages").appendChild(div);
+  $("messages").scrollTop = $("messages").scrollHeight;
+  return div;
+}
+// Begin "thinking" on `target` (null = Master). Safe to call again — the label
+// just updates if a bubble is already showing on the active thread.
+function showThinking(target, label) {
+  const key = target || "";
+  if (!threads[key]) threads[key] = { conversationId: null, bubbles: [] };
+  const th = threads[key];
+  th.thinking = true;
+  th.thinkingLabel = label || "thinking…";
+  if (key === (activeTarget || "")) {
+    const existing = $("messages").querySelector('.bubble.thinking');
+    if (existing) existing.querySelector(".tlabel").textContent = th.thinkingLabel;
+    else appendThinkingDom(th.thinkingLabel);
+  }
+}
+function hideThinking(target) {
+  const key = target || "";
+  const th = threads[key];
+  if (th) { th.thinking = false; th.thinkingLabel = ""; }
+  if (key === (activeTarget || "")) {
+    const existing = $("messages").querySelector('.bubble.thinking');
+    if (existing) existing.remove();
+  }
 }
 
 // Which agents answer a direct chat themselves vs. via the Master (mirrors the
@@ -410,6 +453,12 @@ async function sendMessage(ev) {
 
   const th = curThread();
   const target = activeTarget;     // capture — user may switch peers mid-request
+  // Show a "thinking…" bubble so the UI never looks frozen. Label uses the
+  // peer's display name when chatting with a specific agent.
+  const peerTitle = target
+    ? ((agentsByName[target] && agentsByName[target].title) || target)
+    : "Manager";
+  showThinking(target, peerTitle + " is thinking…");
   try {
     const res = await api("POST", "/chat", {
       body: {
@@ -421,11 +470,13 @@ async function sendMessage(ev) {
     th.conversationId = res.conversation_id;
     if (target === null && res.conversation_id)
       localStorage.setItem("agentmgr_conversation", res.conversation_id);
+    hideThinking(target);
     // land the reply in its own thread even if the user has since switched
     if (target === activeTarget) addBubble("master", res.reply);
     else if (threads[target || ""]) threads[target || ""].bubbles.push(
       { role: "master", text: res.reply, atts: [] });
   } catch (e) {
+    hideThinking(target);
     addBubble("sys", "Error: " + e.message);
   }
 }
@@ -971,8 +1022,10 @@ function agentAction(a) {
   return openAgentChat(a);   // "💬 Message" → scope the chat to this one agent
 }
 
+// Demo/scaffold agents hidden from the roster panel (still in the registry).
+const _HIDDEN_AGENTS = new Set(["echo-worker", "transform-worker"]);
 function renderAgents(data) {
-  const agents = data.agents || [];
+  const agents = (data.agents || []).filter((a) => !_HIDDEN_AGENTS.has(a.name));
   agentsByName = {};
   agents.forEach((a) => (agentsByName[a.name] = a));
   $("agentCount").textContent = agents.length;
@@ -982,6 +1035,9 @@ function renderAgents(data) {
     const card = document.createElement("div");
     card.className = "agent-card";
     card.dataset.agent = a.name;
+    // searchable blob for the quick filter (name / title / function / caps)
+    card.dataset.search = [a.name, a.title, a.description, a.runtime, a.group,
+      (a.capabilities || []).join(" ")].filter(Boolean).join(" ").toLowerCase();
     if (runningAgents.has(a.name)) card.classList.add("running");
 
     const top = document.createElement("div");
@@ -1036,19 +1092,54 @@ function renderAgents(data) {
     prog.className = "ac-progress";
     prog.innerHTML = '<div class="ac-progress-bar"></div>';
 
-    const act = document.createElement("button");
-    act.className = "ac-act";
-    act.textContent = agentActionLabel(a);
-    act.onclick = () => agentAction(a);
+    // The backup agent gets TWO buttons (back up now / restore); everything
+    // else has a single primary action.
+    let actionEl;
+    if (a.name === "backup") {
+      actionEl = document.createElement("div");
+      actionEl.className = "ac-act-row";
+      const b = document.createElement("button");
+      b.className = "ac-act";
+      b.textContent = "💾 Back up now";
+      b.title = "Archive every agent to Google Cloud Storage now";
+      b.onclick = (e) => { e.stopPropagation(); runBackupAction({ action: "backup_now" }, "Back up"); };
+      const r = document.createElement("button");
+      r.className = "ac-act ac-act-alt";
+      r.textContent = "♻️ Restore";
+      r.title = "Restore all agents from the most recent backup (needs approval)";
+      r.onclick = (e) => { e.stopPropagation(); restoreFromBackup(); };
+      actionEl.append(b, r);
+    } else {
+      actionEl = document.createElement("button");
+      actionEl.className = "ac-act";
+      actionEl.textContent = agentActionLabel(a);
+      actionEl.onclick = () => agentAction(a);
+    }
 
     card.append(top);
     if (a.description) card.append(desc);
-    card.append(meta, prog, act);
+    card.append(meta, prog, actionEl);
     list.appendChild(card);
   });
   renderStats(agents);
+  applyAgentFilter();        // re-apply any active filter to the rebuilt list
   highlightActiveCard();     // cards were rebuilt — restore the active marker
   updateChatContext();       // and refresh the peer's title if it changed
+}
+
+/* ---- quick filter: narrow the roster by typed name / function ---- */
+function applyAgentFilter() {
+  const input = $("agentFilter");
+  const q = (input ? input.value : "").trim().toLowerCase();
+  const cards = $("agentList").querySelectorAll(".agent-card");
+  let shown = 0;
+  cards.forEach((c) => {
+    const hit = !q || (c.dataset.search || "").includes(q);
+    c.style.display = hit ? "" : "none";
+    if (hit) shown++;
+  });
+  const badge = $("agentCount");
+  if (badge) badge.textContent = q ? `${shown}/${cards.length}` : cards.length;
 }
 
 /* ---- progress bar: mark an agent busy while it has in-flight work ---- */
@@ -1247,13 +1338,26 @@ async function loadChatBody(item){
 
     body.querySelector(".chat-reply").onsubmit = async (ev) => {
       ev.preventDefault();
+      const form = ev.currentTarget;
       const inp = body.querySelector(".chat-reply-input");
+      const btn = body.querySelector(".chat-reply-send");
       const t = inp.value.trim(); if (!t) return;
       inp.disabled = true;
+      if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = "Sending…"; }
+      // animated dots next to the Send button so it's obvious we're working
+      const dots = document.createElement("span");
+      dots.className = "chat-reply-thinking";
+      dots.innerHTML = '<span class="tdots"><span></span><span></span><span></span></span><span>sending</span>';
+      form.appendChild(dots);
       try {
         await api("POST", "/agents/joegpt/chats/" + encodeURIComponent(sid) + "/reply", { body: { text: t } });
         body.dataset.loaded = ""; await loadChatBody(item);   // refresh to show it
-      } catch (e){ inp.disabled = false; addBubble("sys", "Reply failed: " + e.message); }
+      } catch (e){
+        inp.disabled = false;
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || "Send"; }
+        dots.remove();
+        addBubble("sys", "Reply failed: " + e.message);
+      }
     };
     const hb = body.querySelector(".chat-handback");
     if (hb) hb.onclick = async () => {
@@ -1951,6 +2055,50 @@ async function runWebAction(payload, label) {
   }
 }
 
+/* ---- backup / restore (the 'backup' agent's two left-panel buttons) ---- */
+let backupBusy = false;
+// Dispatch a backup/restore action, then poll for its result. restore_* block
+// in the Mac daemon on the approval gate, so the approval banner may pop up —
+// approve it with Face ID and this keeps polling until it finishes.
+async function runBackupAction(payload, label) {
+  if (backupBusy) return;
+  backupBusy = true;
+  setAgentRunning("backup", true);
+  addBubble("sys", "Backup · " + (label || payload.action) +
+    "… (approve in the banner if asked)");
+  try {
+    const { task_id } = await api("POST", "/backup/dispatch", { body: payload });
+    const started = Date.now();
+    while (Date.now() - started < 30 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const r = await api("GET", "/backup/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        const failed = r.status === "FAILED";
+        const note = (r.output && r.output.note) ||
+          (failed ? (r.error || "failed") : "done");
+        addBubble("sys", "Backup · " + (label || payload.action) + " — " +
+          (failed ? "❌ " : "✅ ") + note);
+        return;
+      }
+    }
+    addBubble("sys", "Backup · still running — check back. (Is the Mac agent up?)");
+  } catch (e) {
+    addBubble("sys", "Backup · ✗ " + e.message);
+  } finally {
+    backupBusy = false;
+    setAgentRunning("backup", false);
+  }
+}
+
+function restoreFromBackup() {
+  if (!confirm(
+    "Restore ALL agents from the most recent backup?\n\n" +
+    "This OVERWRITES the current agent files on this Mac with the latest " +
+    "backup from Google Cloud Storage. You'll still need to approve it with " +
+    "Face ID / the approval banner.")) return;
+  runBackupAction({ action: "restore_latest" }, "Restore (latest)");
+}
+
 async function webAddPhoto() {
   const file = $("webPhotoFile").files[0];
   const title = $("webPhotoTitle").value.trim();
@@ -2026,6 +2174,8 @@ function init() {
 
   // command center
   $("refreshAgents").onclick = loadAgents;
+  $("agentFilter").oninput = applyAgentFilter;
+  $("agentFilter").onkeydown = (e) => { if (e.key === "Escape") { e.target.value = ""; applyAgentFilter(); } };
   $("chatBack").onclick = () => switchTarget(null);   // back to the Manager
   $("refreshReports").onclick = loadReports;
   $("secRow").onclick = () => openSecuritySheet(false);

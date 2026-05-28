@@ -32,6 +32,8 @@ import uvicorn
 
 from agent.local_agent import (
     process_assistant_task,
+    process_backup_task,
+    process_cfo_task,
     process_jazzysphotos_task,
     process_lead_task,
     process_security_task,
@@ -128,6 +130,10 @@ def main() -> int:
             process_lead_task(task, store, cfg)
         elif task.kind == "site":
             process_jazzysphotos_task(task, store, session_mgr, gate, cfg)
+        elif task.kind == "cfo":
+            process_cfo_task(task, store, cfg)
+        elif task.kind == "backup":
+            process_backup_task(task, store, gate, cfg)
         else:
             process_task(
                 task, store, session_mgr, gate,
@@ -153,8 +159,13 @@ def main() -> int:
                      daemon=True, name="mac-shell").start()
     threading.Thread(
         target=_loop,
-        args=(("assistant", "security-health", "lead-response", "jazzysphotos-site"), "assistant"),
+        args=(("assistant", "security-health", "lead-response",
+               "jazzysphotos-site", "backup"), "assistant"),
         daemon=True, name="assistant").start()
+    # Finance Agent (cfo) gets its own thread — its QBO + Claude runs take a minute+
+    # (digest/recurring/alerts), and shouldn't block chat or the terminal.
+    threading.Thread(target=_loop, args=(("cfo",), "cfo"),
+                     daemon=True, name="cfo").start()
 
     bar = "=" * 60
     print(f"\n{bar}")
