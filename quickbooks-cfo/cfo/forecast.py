@@ -100,7 +100,7 @@ def build_forecast(pipeline: list[dict], *, today: dt.date | None = None) -> str
     next90 = sum(buckets[l]["total"] for l in ("Next 30 days", "31–60 days", "61–90 days"))
 
     out = ["## Short-Term Revenue Forecast", ""]
-    out.append(f"**Projected incoming commissions — next 90 days: ${next90:,.0f}** "
+    out.append(f"**Projected company-net commissions — next 90 days: ${next90:,.0f}** "
                f"across {sum(buckets[l]['count'] for l in ('Next 30 days','31–60 days','61–90 days'))} deal(s).")
     out.append("")
     out.append("| Window | Deals | Projected commission |")
@@ -131,5 +131,6 @@ def build_forecast(pipeline: list[dict], *, today: dt.date | None = None) -> str
 
     out.append("")
     out.append("_Source: Brokermint pending-deal pipeline. Amounts are the "
-               "brokerage's expected commission per deal; closings can slip._")
+               "brokerage's expected COMPANY-NET commission (office dollar after "
+               "agent splits) per deal; closings can slip._")
     return "\n".join(out)

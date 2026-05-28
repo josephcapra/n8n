@@ -52,10 +52,10 @@ function toISODate(v) {
     if (ACTION === 'status') { emit({ ok: true, pipeline: [], note: 'Brokermint session is authenticated.' }); await ctx.close(); await browser.close(); process.exit(0); }
 
     // Pull the transaction list, then ENRICH each non-closed deal from its detail
-    // (/transactions/{id}): the list view lacks closing_date and often shows
-    // commission 0, while the detail carries closing_date (epoch ms) +
-    // total_gross_commission. Commission = the gross check the brokerage receives
-    // at closing; fall back to the list's office_commissions_net when gross is 0.
+    // (/transactions/{id}) for closing_date (epoch ms). Commission = COMPANY NET
+    // (office_commissions_net from the list — what the brokerage keeps after agent
+    // splits); gross_commission (total_gross_commission from the detail) is kept
+    // alongside for reference.
     const res = await page.evaluate(async (today) => {
       const HDR = { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
       const CLOSED = /clos|cancel|archiv|expired|withdraw|terminat|dead|fell/i;
@@ -79,7 +79,7 @@ function toISODate(v) {
         deals.push({
           address: [e.address, e.city, [e.state, e.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || e.transaction_name || '(unnamed deal)',
           sale_price: num(e.price),
-          commission: gross > 0 ? gross : net,
+          commission: net,                  // COMPANY NET — what the brokerage keeps
           gross_commission: gross, office_net: net,
           close_date_ms: closing_ms,
           status: (e.status || '').toString(),
