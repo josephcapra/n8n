@@ -71,6 +71,15 @@ class Config:
     # agents -> gs://paradise-agents-backup; restore the latest on demand).
     backup_dir: str = "/Users/User/paradise-realty"
     backup_timeout_s: float = 1800.0         # tar + GCS upload (or download + extract) of all agents
+    # brokermint-pipeline agent: dir holding bm_pipeline.js (pulls pending deals
+    # -> commission + closing date via the logged-in Brokermint session).
+    brokermint_pipeline_dir: str = "/Users/User/paperless-tc"
+    brokermint_pipeline_timeout_s: float = 900.0   # headed login + API pull
+    # transaction-coordinator agent (umbrella): dir holding run_tc.sh — pulls
+    # Paperless Pipeline + Brokermint, reconciles them, emails the top-priority
+    # digest, and drafts co-op recruiting thank-you cards.
+    transaction_coordinator_dir: str = "/Users/User/paperless-tc"
+    transaction_coordinator_timeout_s: float = 1200.0  # 2 web pulls + analyze + email
     # Catastrophic commands that ALWAYS need fresh approval, even mid-session.
     always_confirm_patterns: tuple[str, ...] = (
         "rm -rf /", "rm -rf ~", "rm -rf *", "mkfs", "dd if=", "diskutil erase",
@@ -158,6 +167,10 @@ def load_config() -> Config:
         cfo_timeout_s=float(_env("AGENTMGR_CFO_TIMEOUT_S", "600")),
         backup_dir=_env("AGENTMGR_BACKUP_DIR", "/Users/User/paradise-realty"),
         backup_timeout_s=float(_env("AGENTMGR_BACKUP_TIMEOUT_S", "1800")),
+        brokermint_pipeline_dir=_env("AGENTMGR_BROKERMINT_PIPELINE_DIR", "/Users/User/paperless-tc"),
+        brokermint_pipeline_timeout_s=float(_env("AGENTMGR_BROKERMINT_PIPELINE_TIMEOUT_S", "900")),
+        transaction_coordinator_dir=_env("AGENTMGR_TC_DIR", "/Users/User/paperless-tc"),
+        transaction_coordinator_timeout_s=float(_env("AGENTMGR_TC_TIMEOUT_S", "1200")),
         always_confirm_patterns=tuple(
             p.strip()
             for p in (_env("AGENTMGR_ALWAYS_CONFIRM") or "").split(",")

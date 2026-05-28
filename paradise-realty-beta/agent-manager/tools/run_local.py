@@ -33,6 +33,7 @@ import uvicorn
 from agent.local_agent import (
     process_assistant_task,
     process_backup_task,
+    process_brokermint_pipeline_task,
     process_cfo_task,
     process_jazzysphotos_task,
     process_lead_task,
@@ -134,6 +135,8 @@ def main() -> int:
             process_cfo_task(task, store, cfg)
         elif task.kind == "backup":
             process_backup_task(task, store, gate, cfg)
+        elif task.kind == "brokermint_pipeline":
+            process_brokermint_pipeline_task(task, store, cfg)
         else:
             process_task(
                 task, store, session_mgr, gate,
@@ -160,7 +163,7 @@ def main() -> int:
     threading.Thread(
         target=_loop,
         args=(("assistant", "security-health", "lead-response",
-               "jazzysphotos-site", "backup"), "assistant"),
+               "jazzysphotos-site", "backup", "brokermint-pipeline"), "assistant"),
         daemon=True, name="assistant").start()
     # Finance Agent (cfo) gets its own thread — its QBO + Claude runs take a minute+
     # (digest/recurring/alerts), and shouldn't block chat or the terminal.

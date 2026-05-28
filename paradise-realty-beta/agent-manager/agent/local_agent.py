@@ -765,16 +765,31 @@ def process_cfo_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
                 error="cfo 'learn' needs a 'note' (fact to remember) in the payload"))
             return
         command = f"python3 run_cfo.py learn {shlex.quote(note)}"
+    elif action == "forecast":
+        # Short-term revenue forecast from a relayed Brokermint pipeline. The
+        # pipeline rows are handed to run_cfo.py via a temp JSON file.
+        import tempfile
+        pipeline = task.payload.get("pipeline") or []
+        fd, _forecast_pf = tempfile.mkstemp(prefix="cfo_pipeline_", suffix=".json")
+        with os.fdopen(fd, "w") as fh:
+            json.dump({"pipeline": pipeline,
+                       "source": task.payload.get("source", "")}, fh)
+        command = f"python3 run_cfo.py forecast --pipeline-file {shlex.quote(_forecast_pf)}"
     elif action in _CFO_ACTIONS:
         command = "python3 run_cfo.py " + " ".join(_CFO_ACTIONS[action])
     else:
         store.put_task_result(TaskResult(
             task_id=task.id, status=TaskStatus.FAILED, worker=worker,
-            error=f"unknown cfo action {action!r}; valid: {sorted(_CFO_ACTIONS) + ['ask', 'learn']}"))
+            error=f"unknown cfo action {action!r}; valid: {sorted(_CFO_ACTIONS) + ['ask', 'learn', 'forecast']}"))
         return
 
     log.info("EXECUTING cfo action", extra={"task_id": task.id, "action": action})
     output = _run_command(command, cfg.cfo_dir, cfg.cfo_timeout_s)
+    if action == "forecast":
+        try:
+            os.unlink(_forecast_pf)
+        except OSError:
+            pass
     output["action"] = action
     status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
     store.put_task_result(TaskResult(
@@ -947,6 +962,208 @@ def process_backup_task(task: TaskSpec, store: StateStore, gate: ApprovalGate,
         error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
     log.info("backup action finished",
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Brokermint pipeline -> Finance Agent forecast ------------------------
+
+_BROKERMINT_ACTIONS = frozenset({"pull", "preview", "status"})
+
+
+def _parse_json_tail(text: str) -> dict | None:
+    """Best-effort: parse a JSON object printed by a helper script. Tries the
+    whole stdout first, then the last ``{...}`` line (so leading log lines that
+    leaked to stdout don't break parsing). Returns None if nothing parses."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        pass
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                return json.loads(line)
+            except (ValueError, TypeError):
+                continue
+    return None
+
+
+def process_brokermint_pipeline_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Brokermint pipeline — pull pending/under-contract deals (commission +
+    closing date) from the logged-in Brokermint session and hand them to the
+    Finance Agent (cfo) for short-term revenue forecasting.
+
+    'pull' (default) fetches the pipeline and ENQUEUES a cfo `forecast` task with
+    the data (the inter-agent handoff — cfo then forecasts + emails). 'preview'
+    fetches + returns the pipeline without relaying. 'status' checks the
+    Brokermint session/connectivity. Shells bm_pipeline.js in
+    cfg.brokermint_pipeline_dir, which prints JSON {ok, pipeline:[...]} to stdout
+    (diagnostics to stderr). Needs the Brokermint browser session (close any open
+    Brokermint Chrome window) or a live API token.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "brokermint-pipeline"
+    action = str(task.payload.get("action", "pull")).strip()
+
+    if action not in _BROKERMINT_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown brokermint-pipeline action {action!r}; valid: {sorted(_BROKERMINT_ACTIONS)}"))
+        return
+
+    command = f"node bm_pipeline.js {shlex.quote(action)}"
+    log.info("EXECUTING brokermint-pipeline", extra={"task_id": task.id, "action": action})
+    out = _run_command(command, cfg.brokermint_pipeline_dir, cfg.brokermint_pipeline_timeout_s)
+    out["action"] = action
+
+    data = _parse_json_tail(out.get("stdout", ""))
+    if out["exit_code"] != 0 or not data or not data.get("ok"):
+        err = (data or {}).get("error") if data else None
+        note = err or f"bm_pipeline.js exited {out['exit_code']}"
+        if err in ("needs_login", "login_wall") or "login" in str(note).lower():
+            note = ("Brokermint isn't authenticated for automation. Close any open "
+                    "Brokermint Chrome window, set BM_PASS in "
+                    "~/.config/paradise/brokermint.env, then keep your phone ready "
+                    "for the SMS code on first login.")
+        out["note"] = note
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker, output=out, error=note))
+        return
+
+    pipeline = data.get("pipeline") or []
+    total = sum(float(r.get("commission") or 0) for r in pipeline)
+    out["pipeline_count"] = len(pipeline)
+    out["projected_commission_total"] = round(total, 2)
+    out.pop("stdout", None)  # keep the result compact; the data is in `pipeline`
+
+    if action in ("preview", "status"):
+        out["pipeline"] = pipeline
+        out["note"] = (f"{len(pipeline)} pending deal(s), ~${total:,.0f} projected "
+                       f"commission. Not relayed (preview).")
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.COMPLETED, output=out, worker=worker))
+        return
+
+    # action == "pull": hand the pipeline to the Finance Agent (cfo) to forecast.
+    # The card-dispatch path doesn't run the Master's relay-drain, so enqueue the
+    # cfo task DIRECTLY (cfo is polled by run_local + the Mac daemon).
+    cfo_task = TaskSpec(
+        agent="cfo", kind="cfo",
+        payload={"action": "forecast", "pipeline": pipeline, "source": worker},
+        conversation_id=task.conversation_id,
+        correlation_id=task.correlation_id,
+        depth=task.depth + 1,
+    )
+    store.put_task(cfo_task)
+    out["relayed_to"] = "cfo"
+    out["relay_task_id"] = cfo_task.id
+    out["note"] = (f"{len(pipeline)} pending deal(s), ~${total:,.0f} projected "
+                   f"commission → sent to the Finance Agent to forecast.")
+    log.info("brokermint-pipeline relayed to cfo",
+             extra={"task_id": task.id, "cfo_task": cfo_task.id, "deals": len(pipeline)})
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=TaskStatus.COMPLETED, output=out, worker=worker))
+
+
+# --- Transaction Coordinator: Paperless Pipeline + Brokermint -------------
+
+_TC_ACTIONS = frozenset(
+    {"daily_digest", "scan", "digest_dry", "reconcile", "recruiting",
+     "draft_thankyou", "status"})
+
+
+def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Transaction Coordinator (umbrella) — pulls Joe's Paperless Pipeline files
+    AND the office-wide Brokermint pipeline, reconciles them (every under-contract
+    PP deal must be pending/closed in Brokermint), and produces a TOP-PRIORITY
+    digest (deadline risk, stalled deals, items needing Joe, wins). On a closed
+    deal it drafts a co-op (other-side) agent thank-you note for recruiting.
+
+    Actions (run_tc.sh in cfg.transaction_coordinator_dir): daily_digest (pull
+    both + analyze + EMAIL), scan (pull+analyze, no email), digest_dry (build
+    HTML, no send), reconcile (Paperless<->Brokermint check), recruiting (co-op
+    targets + DBPR address), draft_thankyou (one deal, payload.tx_id), status.
+    Reads two web sessions + sends one internal email; not destructive/sensitive.
+    On daily_digest it also hands the Brokermint pending pipeline to the Finance
+    Agent (cfo) via the brokermint-pipeline relay, and can feed Joe's daily report
+    (joe-crm-report) when payload.relay_to is set. exit 3 = a source session
+    lapsed (digest still emailed; reconciliation skipped until re-auth)."""
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "transaction-coordinator"
+    action = str(task.payload.get("action", "daily_digest")).strip()
+    if action not in _TC_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown transaction action {action!r}; valid: {sorted(_TC_ACTIONS)}"))
+        return
+
+    arg = ""
+    if action == "draft_thankyou":
+        arg = str(task.payload.get("tx_id", "")).strip()
+        if not arg:
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+                error="draft_thankyou needs a 'tx_id' in the payload"))
+            return
+
+    command = f"bash run_tc.sh {shlex.quote(action)}" + (f" {shlex.quote(arg)}" if arg else "")
+    log.info("EXECUTING transaction-coordinator", extra={"task_id": task.id, "action": action})
+    out = _run_command(command, cfg.transaction_coordinator_dir, cfg.transaction_coordinator_timeout_s)
+    out["action"] = action
+
+    reauth = out["exit_code"] == 3       # a source session lapsed
+    ok = out["exit_code"] == 0 or reauth
+
+    # Attach the compact digest summary for the GUI bubble.
+    try:
+        dg = json.loads(open(os.path.join(
+            cfg.transaction_coordinator_dir, "data", "digest.json")).read())
+        c = dg.get("counts", {})
+        out["digest"] = {k: dg.get(k) for k in
+                         ("counts", "office", "action", "watch", "wins",
+                          "recruiting", "reconciliation")}
+        out["note"] = (
+            f"🔴 {c.get('action', 0)} action · 🟡 {c.get('watch', 0)} watch · "
+            f"🟢 {c.get('wins', 0)} wins · "
+            + ("⚠ " + str(c.get('recon_gaps')) + " reconciliation gap(s)"
+               if c.get('recon_gaps') else "✓ all deals reconcile"))
+        out.pop("stdout", None)
+    except Exception as e:  # noqa: BLE001
+        out["digest_error"] = str(e)[:120]
+    if reauth:
+        out["note"] = (out.get("note", "")
+                       + "  ⚠ Brokermint/Paperless session expired — re-auth with a "
+                         "2FA code: node ~/paperless-tc/bm_login.js")
+
+    # Relay: hand the Brokermint pending pipeline to the Finance Agent (cfo) via
+    # the brokermint-pipeline agent (whose handler forecasts + relays to cfo).
+    if action == "daily_digest" and not reauth and task.payload.get("relay", True):
+        bm_task = TaskSpec(
+            agent="brokermint-pipeline", kind="brokermint_pipeline",
+            payload={"action": "pull"}, conversation_id=task.conversation_id,
+            correlation_id=task.correlation_id, depth=task.depth + 1)
+        store.put_task(bm_task)
+        out["relayed_to"] = ["brokermint-pipeline → cfo"]
+        relay_to = task.payload.get("relay_to")   # opt-in feed to Joe's daily report
+        if relay_to:
+            store.put_message(Message(
+                correlation_id=task.correlation_id,
+                from_agent=worker, to_agent=relay_to,
+                payload={"action": task.payload.get("relay_action", "daily_report"),
+                         "tx_summary": out.get("digest", {})},
+                relay_depth=task.depth + 1))
+            out["relayed_to"].append(relay_to)
+
+    status = TaskStatus.COMPLETED if ok else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=out, worker=worker,
+        error=None if ok else f"exit {out['exit_code']}"))
+    log.info("transaction-coordinator finished",
+             extra={"task_id": task.id, "action": action, "exit_code": out["exit_code"]})
 
 
 # --- jazzysphotos.com site agent -----------------------------------------
@@ -1503,7 +1720,7 @@ def run_agent(config: Config | None = None) -> None:
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
                "incentive-social", "taylor", "joe-crm-report", "scout",
                "listing-report", "zoom-insights", "cfo", "spend-monitor",
-               "backup")
+               "backup", "brokermint-pipeline", "transaction-coordinator")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -1539,6 +1756,10 @@ def run_agent(config: Config | None = None) -> None:
                         process_spend_report_task(task, store, cfg)
                     elif task.kind == "backup":
                         process_backup_task(task, store, gate, cfg)
+                    elif task.kind == "brokermint_pipeline":
+                        process_brokermint_pipeline_task(task, store, cfg)
+                    elif task.kind == "transaction":
+                        process_transaction_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

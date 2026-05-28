@@ -1109,6 +1109,12 @@ function renderAgents(data) {
       r.title = "Restore all agents from the most recent backup (needs approval)";
       r.onclick = (e) => { e.stopPropagation(); restoreFromBackup(); };
       actionEl.append(b, r);
+    } else if (a.name === "brokermint-pipeline") {
+      actionEl = document.createElement("button");
+      actionEl.className = "ac-act";
+      actionEl.textContent = "💵 Pull → Finance forecast";
+      actionEl.title = "Pull pending Brokermint deals and send them to the Finance Agent to forecast";
+      actionEl.onclick = (e) => { e.stopPropagation(); runPipelineAction({ action: "pull" }, "Pull pipeline → Finance"); };
     } else {
       actionEl = document.createElement("button");
       actionEl.className = "ac-act";
@@ -2097,6 +2103,45 @@ function restoreFromBackup() {
     "backup from Google Cloud Storage. You'll still need to approve it with " +
     "Face ID / the approval banner.")) return;
   runBackupAction({ action: "restore_latest" }, "Restore (latest)");
+}
+
+/* ---- brokermint pipeline → Finance Agent forecast ---- */
+let pipelineBusy = false;
+// Pull the Brokermint pending-deal pipeline; on 'pull' the Mac daemon hands the
+// deals to the Finance Agent (cfo), which forecasts + emails the short-term
+// revenue. Reads the logged-in Brokermint session, so any open Brokermint
+// Chrome window must be closed when this runs.
+async function runPipelineAction(payload, label) {
+  if (pipelineBusy) return;
+  pipelineBusy = true;
+  setAgentRunning("brokermint-pipeline", true);
+  addBubble("sys", "Pipeline · " + (label || payload.action) +
+    "… (close any open Brokermint Chrome; first login texts you an SMS code)");
+  try {
+    const { task_id } = await api("POST", "/pipeline/dispatch", { body: payload });
+    const started = Date.now();
+    while (Date.now() - started < 20 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const r = await api("GET", "/pipeline/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        const failed = r.status === "FAILED";
+        const note = (r.output && r.output.note) ||
+          (failed ? (r.error || "failed") : "done");
+        addBubble("sys", "Pipeline · " + (label || payload.action) + " — " +
+          (failed ? "❌ " : "✅ ") + note);
+        if (!failed && r.output && r.output.relayed_to === "cfo") {
+          addBubble("sys", "Finance Agent is forecasting the revenue — watch for its email/report.");
+        }
+        return;
+      }
+    }
+    addBubble("sys", "Pipeline · still running — check back. (Is the Mac agent up?)");
+  } catch (e) {
+    addBubble("sys", "Pipeline · ✗ " + e.message);
+  } finally {
+    pipelineBusy = false;
+    setAgentRunning("brokermint-pipeline", false);
+  }
 }
 
 async function webAddPhoto() {

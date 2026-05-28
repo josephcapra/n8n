@@ -885,6 +885,76 @@ def build_app(config: Config | None = None) -> FastAPI:
             "error": result.error,
         }
 
+    # --- brokermint pipeline ---------------------------------------------
+    # The 'brokermint-pipeline' card dispatches here. 'pull' fetches pending
+    # deals and hands them to the Finance Agent (cfo) to forecast; 'preview'
+    # returns the pipeline without relaying. The Mac daemon does the work +
+    # enqueues the cfo forecast task itself; the UI polls /pipeline/result.
+    @app.post("/pipeline/dispatch", dependencies=[Depends(require_auth)])
+    def pipeline_dispatch(body: dict = Body(...)) -> dict:
+        action = str(body.get("action", "pull")).strip()
+        valid = {"pull", "preview", "status"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        task = TaskSpec(
+            agent="brokermint-pipeline", kind="brokermint_pipeline",
+            payload={"action": action},
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("brokermint-pipeline dispatched", extra={"task_id": task.id, "action": action})
+        return {"task_id": task.id, "action": action}
+
+    @app.get("/pipeline/result/{task_id}", dependencies=[Depends(require_auth)])
+    def pipeline_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "status": result.status,
+            "output": result.output or {},
+            "error": result.error,
+        }
+
+    # --- transaction coordinator -----------------------------------------
+    # The 'transaction-coordinator' card dispatches here. daily_digest pulls
+    # Paperless Pipeline + Brokermint, reconciles them, emails the top-priority
+    # digest (and relays the pending pipeline to the cfo); scan/reconcile/
+    # recruiting are read-only; draft_thankyou needs a tx_id. UI polls /tx/result.
+    @app.post("/tx/dispatch", dependencies=[Depends(require_auth)])
+    def tx_dispatch(body: dict = Body(...)) -> dict:
+        action = str(body.get("action", "daily_digest")).strip()
+        valid = {"daily_digest", "scan", "digest_dry", "reconcile",
+                 "recruiting", "draft_thankyou", "status"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        payload = {"action": action}
+        if "tx_id" in body:       # only draft_thankyou uses it
+            payload["tx_id"] = str(body["tx_id"])
+        if "relay_to" in body:    # opt-in feed to Joe's daily report
+            payload["relay_to"] = body["relay_to"]
+        task = TaskSpec(
+            agent="transaction-coordinator", kind="transaction", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("transaction-coordinator dispatched",
+                 extra={"task_id": task.id, "action": action})
+        return {"task_id": task.id, "action": action}
+
+    @app.get("/tx/result/{task_id}", dependencies=[Depends(require_auth)])
+    def tx_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "status": result.status,
+            "output": result.output or {},
+            "error": result.error,
+        }
+
     # --- terminal --------------------------------------------------------
     # The in-app terminal dispatches a shell command to the local 'mac-shell'
     # agent and polls for its result. The command is SENSITIVE: the Mac daemon
