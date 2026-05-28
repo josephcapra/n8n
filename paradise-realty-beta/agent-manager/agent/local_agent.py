@@ -766,14 +766,15 @@ def process_cfo_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
             return
         command = f"python3 run_cfo.py learn {shlex.quote(note)}"
     elif action == "forecast":
-        # Short-term revenue forecast from a relayed Brokermint pipeline. The
-        # pipeline rows are handed to run_cfo.py via a temp JSON file.
+        # Pipeline & listings report from the relayed Brokermint pipeline +
+        # Beaches MLS listings. The structured payload is handed to run_cfo.py
+        # via a temp JSON file. ('pipeline' kept for back-compat = pending.)
         import tempfile
-        pipeline = task.payload.get("pipeline") or []
+        fc = {k: task.payload.get(k) for k in
+              ("pending", "active_listings", "brokermint_active", "mls_as_of", "source", "pipeline")}
         fd, _forecast_pf = tempfile.mkstemp(prefix="cfo_pipeline_", suffix=".json")
         with os.fdopen(fd, "w") as fh:
-            json.dump({"pipeline": pipeline,
-                       "source": task.payload.get("source", "")}, fh)
+            json.dump(fc, fh)
         command = f"python3 run_cfo.py forecast --pipeline-file {shlex.quote(_forecast_pf)}"
     elif action in _CFO_ACTIONS:
         command = "python3 run_cfo.py " + " ".join(_CFO_ACTIONS[action])
@@ -1033,26 +1034,50 @@ def process_brokermint_pipeline_task(task: TaskSpec, store: StateStore, cfg: Con
             task_id=task.id, status=TaskStatus.FAILED, worker=worker, output=out, error=note))
         return
 
-    pipeline = data.get("pipeline") or []
-    total = sum(float(r.get("commission") or 0) for r in pipeline)
-    out["pipeline_count"] = len(pipeline)
-    out["projected_commission_total"] = round(total, 2)
-    out.pop("stdout", None)  # keep the result compact; the data is in `pipeline`
+    # Brokermint deals: split PENDING (under contract — the revenue forecast) from
+    # ACTIVE (listings/other transactions, summarized as inventory).
+    deals = data.get("pipeline") or []
+    pending = [d for d in deals if "pending" in str(d.get("status", "")).lower()]
+    bm_active = [d for d in deals if str(d.get("status", "")).lower() == "active"]
+    pending_total = sum(float(d.get("commission") or 0) for d in pending)
+    bm_active_total = sum(float(d.get("commission") or 0) for d in bm_active)
+    out.pop("stdout", None)  # keep the result compact
+
+    # PRIORITY 2: active listings (current on-market inventory) from Beaches MLS
+    # (Spark) — the office's real listings with list price + DOM. Best-effort: if
+    # the Spark pull fails, the pending forecast still proceeds.
+    mls_listings, mls_as_of = [], None
+    spark = _run_command("python3 office_active_json.py", cfg.listing_report_dir, 180.0)
+    sdata = _parse_json_tail(spark.get("stdout", ""))
+    if sdata and sdata.get("ok"):
+        mls_listings = sdata.get("listings") or []
+        mls_as_of = sdata.get("as_of")
+    else:
+        out["mls_warning"] = ((sdata or {}).get("error") if sdata else None) or "Beaches MLS pull failed"
+    mls_total = sum(float(l.get("list_price") or 0) for l in mls_listings)
+
+    out["pending_count"] = len(pending)
+    out["pending_net_total"] = round(pending_total, 2)
+    out["active_listing_count"] = len(mls_listings)
+    summary = (f"{len(pending)} pending (~${pending_total:,.0f} net) · "
+               f"{len(mls_listings)} active MLS listings (~${mls_total:,.0f} list vol)")
 
     if action in ("preview", "status"):
-        out["pipeline"] = pipeline
-        out["note"] = (f"{len(pipeline)} pending deal(s), ~${total:,.0f} projected "
-                       f"commission. Not relayed (preview).")
+        out["pending"] = pending
+        out["active_listings"] = mls_listings
+        out["note"] = summary + ". Not relayed (preview)."
         store.put_task_result(TaskResult(
             task_id=task.id, status=TaskStatus.COMPLETED, output=out, worker=worker))
         return
 
-    # action == "pull": hand the pipeline to the Finance Agent (cfo) to forecast.
+    # action == "pull": hand pending deals + active listings to the Finance Agent.
     # The card-dispatch path doesn't run the Master's relay-drain, so enqueue the
     # cfo task DIRECTLY (cfo is polled by run_local + the Mac daemon).
     cfo_task = TaskSpec(
         agent="cfo", kind="cfo",
-        payload={"action": "forecast", "pipeline": pipeline, "source": worker},
+        payload={"action": "forecast", "pending": pending, "active_listings": mls_listings,
+                 "brokermint_active": {"count": len(bm_active), "net_total": round(bm_active_total, 2)},
+                 "mls_as_of": mls_as_of, "source": worker},
         conversation_id=task.conversation_id,
         correlation_id=task.correlation_id,
         depth=task.depth + 1,
@@ -1060,10 +1085,10 @@ def process_brokermint_pipeline_task(task: TaskSpec, store: StateStore, cfg: Con
     store.put_task(cfo_task)
     out["relayed_to"] = "cfo"
     out["relay_task_id"] = cfo_task.id
-    out["note"] = (f"{len(pipeline)} pending deal(s), ~${total:,.0f} projected "
-                   f"commission → sent to the Finance Agent to forecast.")
+    out["note"] = summary + " → sent to the Finance Agent to forecast."
     log.info("brokermint-pipeline relayed to cfo",
-             extra={"task_id": task.id, "cfo_task": cfo_task.id, "deals": len(pipeline)})
+             extra={"task_id": task.id, "cfo_task": cfo_task.id,
+                    "pending": len(pending), "active": len(mls_listings)})
     store.put_task_result(TaskResult(
         task_id=task.id, status=TaskStatus.COMPLETED, output=out, worker=worker))
 
@@ -1072,7 +1097,7 @@ def process_brokermint_pipeline_task(task: TaskSpec, store: StateStore, cfg: Con
 
 _TC_ACTIONS = frozenset(
     {"daily_digest", "scan", "digest_dry", "reconcile", "recruiting",
-     "draft_thankyou", "status"})
+     "draft_thankyou", "tx_detail", "status"})
 
 
 def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
@@ -1102,12 +1127,12 @@ def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> 
         return
 
     arg = ""
-    if action == "draft_thankyou":
+    if action in ("draft_thankyou", "tx_detail"):
         arg = str(task.payload.get("tx_id", "")).strip()
         if not arg:
             store.put_task_result(TaskResult(
                 task_id=task.id, status=TaskStatus.FAILED, worker=worker,
-                error="draft_thankyou needs a 'tx_id' in the payload"))
+                error=f"{action} needs a 'tx_id' in the payload"))
             return
 
     command = f"bash run_tc.sh {shlex.quote(action)}" + (f" {shlex.quote(arg)}" if arg else "")
@@ -1118,22 +1143,27 @@ def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> 
     reauth = out["exit_code"] == 3       # a source session lapsed
     ok = out["exit_code"] == 0 or reauth
 
-    # Attach the compact digest summary for the GUI bubble.
-    try:
-        dg = json.loads(open(os.path.join(
-            cfg.transaction_coordinator_dir, "data", "digest.json")).read())
-        c = dg.get("counts", {})
-        out["digest"] = {k: dg.get(k) for k in
-                         ("counts", "office", "action", "watch", "wins",
-                          "recruiting", "reconciliation")}
-        out["note"] = (
-            f"🔴 {c.get('action', 0)} action · 🟡 {c.get('watch', 0)} watch · "
-            f"🟢 {c.get('wins', 0)} wins · "
-            + ("⚠ " + str(c.get('recon_gaps')) + " reconciliation gap(s)"
-               if c.get('recon_gaps') else "✓ all deals reconcile"))
-        out.pop("stdout", None)
-    except Exception as e:  # noqa: BLE001
-        out["digest_error"] = str(e)[:120]
+    # Attach the compact digest summary for the GUI bubble — only for actions that
+    # (re)compute digest.json. draft_thankyou/tx_detail return their own stdout
+    # answer (co-op letter / contacts + documents), so leave their stdout intact.
+    if action in ("daily_digest", "scan", "digest_dry", "reconcile", "recruiting"):
+        try:
+            dg = json.loads(open(os.path.join(
+                cfg.transaction_coordinator_dir, "data", "digest.json")).read())
+            c = dg.get("counts", {})
+            out["digest"] = {k: dg.get(k) for k in
+                             ("counts", "office", "action", "watch", "wins",
+                              "recruiting", "reconciliation")}
+            out["note"] = (
+                f"🔴 {c.get('action', 0)} action · 🟡 {c.get('watch', 0)} watch · "
+                f"🟢 {c.get('wins', 0)} wins · "
+                + ("⚠ " + str(c.get('recon_gaps')) + " reconciliation gap(s)"
+                   if c.get('recon_gaps') else "✓ all deals reconcile"))
+            # daily_digest/scan: the email/summary is the point, drop log noise.
+            if action in ("daily_digest", "scan"):
+                out.pop("stdout", None)
+        except Exception as e:  # noqa: BLE001
+            out["digest_error"] = str(e)[:120]
     if reauth:
         out["note"] = (out.get("note", "")
                        + "  ⚠ Brokermint/Paperless session expired — re-auth with a "

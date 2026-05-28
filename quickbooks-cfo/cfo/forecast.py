@@ -49,17 +49,21 @@ _WINDOWS = [
 ]
 
 
-def build_forecast(pipeline: list[dict], *, today: dt.date | None = None) -> str:
-    """Return a Markdown short-term revenue forecast from pipeline rows.
+def build_forecast(pending: list[dict], *, active_listings: list[dict] | None = None,
+                   brokermint_active: dict | None = None, mls_as_of: str | None = None,
+                   today: dt.date | None = None) -> str:
+    """Return a Markdown report with two sections:
 
-    Each row: {address, sale_price, commission, close_date, status, ...}.
-    ``commission`` is the brokerage's expected income from that deal.
+    1. Short-term revenue forecast from PENDING deals (each row {address,
+       commission, close_date, status, ...}; ``commission`` = company net).
+    2. Active-listings inventory (current on-market listings from Beaches MLS,
+       plus a Brokermint-active summary).
     """
     today = today or dt.date.today()
     rows = []
     undated_total = 0.0
     undated_count = 0
-    for r in pipeline or []:
+    for r in pending or []:
         amt = _to_amount(r.get("commission"))
         d = _to_date(r.get("close_date") or r.get("closing_date"))
         if d is None:
@@ -74,63 +78,84 @@ def build_forecast(pipeline: list[dict], *, today: dt.date | None = None) -> str
             "status": (r.get("status") or "").strip(),
         })
 
+    # --- Section 1: pending deals -> revenue forecast --------------------
+    out = ["## 1. Pending Deals — Short-Term Revenue Forecast", ""]
     if not rows and not undated_count:
-        return ("## Short-Term Revenue Forecast\n\n"
-                "No pending deals in the Brokermint pipeline right now — nothing to "
-                "forecast. (If that's unexpected, re-run the Brokermint Pipeline agent; "
-                "it may need a fresh login.)")
+        out.append("_No pending deals in the Brokermint pipeline right now._")
+    else:
+        buckets = {label: {"count": 0, "total": 0.0} for label, _ in _WINDOWS}
+        overdue = {"count": 0, "total": 0.0}  # close date already passed
+        for row in rows:
+            if row["days"] < 0:
+                overdue["count"] += 1
+                overdue["total"] += row["commission"]
+                continue
+            for label, ub in _WINDOWS:
+                if ub is None or row["days"] <= ub:
+                    buckets[label]["count"] += 1
+                    buckets[label]["total"] += row["commission"]
+                    break
 
-    # Bucket each dated deal into the first window it fits.
-    buckets = {label: {"count": 0, "total": 0.0, "deals": []} for label, _ in _WINDOWS}
-    overdue = {"count": 0, "total": 0.0, "deals": []}  # close date already passed
-    for row in rows:
-        if row["days"] < 0:
-            overdue["count"] += 1
-            overdue["total"] += row["commission"]
-            overdue["deals"].append(row)
-            continue
-        for label, ub in _WINDOWS:
-            if ub is None or row["days"] <= ub:
-                buckets[label]["count"] += 1
-                buckets[label]["total"] += row["commission"]
-                buckets[label]["deals"].append(row)
-                break
+        grand = sum(b["total"] for b in buckets.values()) + overdue["total"] + undated_total
+        win90 = ("Next 30 days", "31–60 days", "61–90 days")
+        next90 = sum(buckets[l]["total"] for l in win90)
+        n90 = sum(buckets[l]["count"] for l in win90)
 
-    grand = sum(b["total"] for b in buckets.values()) + overdue["total"] + undated_total
-    next90 = sum(buckets[l]["total"] for l in ("Next 30 days", "31–60 days", "61–90 days"))
-
-    out = ["## Short-Term Revenue Forecast", ""]
-    out.append(f"**Projected company-net commissions — next 90 days: ${next90:,.0f}** "
-               f"across {sum(buckets[l]['count'] for l in ('Next 30 days','31–60 days','61–90 days'))} deal(s).")
-    out.append("")
-    out.append("| Window | Deals | Projected commission |")
-    out.append("| --- | ---: | ---: |")
-    for label, _ in _WINDOWS:
-        b = buckets[label]
-        out.append(f"| {label} | {b['count']} | ${b['total']:,.0f} |")
-    if overdue["count"]:
-        out.append(f"| ⚠️ Past expected close | {overdue['count']} | ${overdue['total']:,.0f} |")
-    if undated_count:
-        out.append(f"| No close date | {undated_count} | ${undated_total:,.0f} |")
-    out.append(f"| **Total pipeline** | **{len(rows) + undated_count}** | **${grand:,.0f}** |")
-    out.append("")
-
-    # Per-deal detail, soonest first.
-    out.append("### Deals by expected close")
-    out.append("")
-    out.append("| Close date | Days | Deal | Commission | Status |")
-    out.append("| --- | ---: | --- | ---: | --- |")
-    for row in sorted(rows, key=lambda x: x["close_date"]):
-        flag = " ⚠️" if row["days"] < 0 else ""
-        out.append(f"| {row['close_date'].isoformat()}{flag} | {row['days']} | "
-                   f"{row['address']} | ${row['commission']:,.0f} | {row['status']} |")
-    if undated_count:
+        out.append(f"**Projected company-net commissions — next 90 days: ${next90:,.0f}** "
+                   f"across {n90} deal(s).")
         out.append("")
-        out.append(f"_Plus {undated_count} deal(s) with no expected close date "
-                   f"(${undated_total:,.0f}) — set their dates in Brokermint to include them in the windows above._")
+        out.append("| Window | Deals | Projected net commission |")
+        out.append("| --- | ---: | ---: |")
+        for label, _ in _WINDOWS:
+            b = buckets[label]
+            out.append(f"| {label} | {b['count']} | ${b['total']:,.0f} |")
+        if overdue["count"]:
+            out.append(f"| ⚠️ Past expected close | {overdue['count']} | ${overdue['total']:,.0f} |")
+        if undated_count:
+            out.append(f"| No close date | {undated_count} | ${undated_total:,.0f} |")
+        out.append(f"| **Total** | **{len(rows) + undated_count}** | **${grand:,.0f}** |")
+        out.append("")
+        out.append("### Pending deals by expected close")
+        out.append("")
+        out.append("| Close date | Days | Deal | Net commission | Status |")
+        out.append("| --- | ---: | --- | ---: | --- |")
+        for row in sorted(rows, key=lambda x: x["close_date"]):
+            flag = " ⚠️" if row["days"] < 0 else ""
+            out.append(f"| {row['close_date'].isoformat()}{flag} | {row['days']} | "
+                       f"{row['address']} | ${row['commission']:,.0f} | {row['status']} |")
+        if undated_count:
+            out.append("")
+            out.append(f"_Plus {undated_count} deal(s) with no close date (${undated_total:,.0f})._")
+        out.append("")
+        out.append("_Company-net = office dollar after agent splits; closings can slip._")
 
-    out.append("")
-    out.append("_Source: Brokermint pending-deal pipeline. Amounts are the "
-               "brokerage's expected COMPANY-NET commission (office dollar after "
-               "agent splits) per deal; closings can slip._")
+    # --- Section 2: active listings (current inventory) ------------------
+    out += _active_section(active_listings or [], brokermint_active or {}, mls_as_of)
     return "\n".join(out)
+
+
+def _active_section(active_listings: list[dict], brokermint_active: dict,
+                    mls_as_of: str | None) -> list[str]:
+    """Markdown for the current on-market inventory (Beaches MLS) + a Brokermint
+    active-transaction summary line."""
+    out = ["", "## 2. Active Listings — Current Inventory", ""]
+    if not active_listings and not brokermint_active.get("count"):
+        out.append("_No active listings found._")
+        return out
+    if active_listings:
+        total = sum(_to_amount(l.get("list_price")) for l in active_listings)
+        asof = f" _(Beaches MLS, as of {mls_as_of})_" if mls_as_of else " _(Beaches MLS)_"
+        out.append(f"**{len(active_listings)} active MLS listings · ${total:,.0f} total list volume**{asof}")
+        out.append("")
+        out.append("| Listing | List price | DOM | Status | Agent |")
+        out.append("| --- | ---: | ---: | --- | --- |")
+        for l in sorted(active_listings, key=lambda x: -_to_amount(x.get("list_price"))):
+            dom = l.get("days_on_market")
+            out.append(f"| {l.get('address', '?')} | ${_to_amount(l.get('list_price')):,.0f} | "
+                       f"{'' if dom in (None, '') else dom} | {l.get('status', '')} | {l.get('list_agent') or ''} |")
+    if brokermint_active.get("count"):
+        out.append("")
+        out.append(f"_Brokermint also shows {brokermint_active['count']} active transaction(s) "
+                   f"(incl. buyer-side / off-MLS / referrals), "
+                   f"~${_to_amount(brokermint_active.get('net_total')):,.0f} company-net._")
+    return out

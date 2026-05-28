@@ -143,22 +143,28 @@ def cmd_learn(args) -> int:
 
 
 def cmd_forecast(args) -> int:
-    """Short-term incoming-revenue forecast from a relayed Brokermint pipeline."""
+    """Pipeline & listings report: pending-deal revenue forecast (company-net) +
+    active-listings inventory. Reads the relayed JSON {pending, active_listings,
+    brokermint_active, mls_as_of} (back-compat: a bare {pipeline} = pending)."""
     import json
 
     from cfo.email_report import send
     from cfo.forecast import build_forecast
 
-    pipeline = []
+    data = {}
     if args.pipeline_file:
         with open(args.pipeline_file, encoding="utf-8") as fh:
-            pipeline = (json.load(fh) or {}).get("pipeline", [])
-    md = build_forecast(pipeline)
+            data = json.load(fh) or {}
+    pending = data.get("pending") or data.get("pipeline") or []
+    active = data.get("active_listings") or []
+    md = build_forecast(pending, active_listings=active,
+                        brokermint_active=data.get("brokermint_active") or {},
+                        mls_as_of=data.get("mls_as_of"))
     result = send(
-        subject=f"Revenue Forecast — {len(pipeline)} pending deal(s)",
+        subject=f"Revenue Forecast — {len(pending)} pending · {len(active)} active listings",
         digest_md=md,
-        title="Short-Term Revenue Forecast",
-        subtitle="from the Brokermint deal pipeline",
+        title="Pipeline & Listings — Revenue Forecast",
+        subtitle="Brokermint pending deals + Beaches MLS active listings",
     )
     print(md)
     print(f"\n[email] {'sent to ' + result['to'] if result.get('emailed') else 'NOT sent: ' + str(result)}")
