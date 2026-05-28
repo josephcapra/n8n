@@ -25,17 +25,11 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const log = (...a) => console.error('[bm-pipeline]', ...a);
 const emit = (obj) => { process.stdout.write(JSON.stringify(obj) + '\n'); };
 
-const CLOSED_RE = /clos|cancel|archiv|expired|withdraw|terminat|dead|fell/i;
-function normalize(t) {
-  const num = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
-  return {
-    address: [t.address, t.city, [t.state, t.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || t.transaction_name || '(unnamed deal)',
-    sale_price: num(t.price),
-    commission: num(t.total_gross_commission != null ? t.total_gross_commission : t.gci),
-    close_date: t.buyer_expiration_date || t.closing_date || null,
-    status: (t.status || '').toString(),
-    owner: t.owner || null,
-  };
+// epoch-ms (or ISO string) -> 'YYYY-MM-DD' (or null). Brokermint dates are epoch ms.
+function toISODate(v) {
+  if (v == null || v === '') return null;
+  const d = new Date(typeof v === 'number' || /^\d+$/.test(String(v)) ? Number(v) : v);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
 (async () => {
@@ -57,25 +51,56 @@ function normalize(t) {
     }
     if (ACTION === 'status') { emit({ ok: true, pipeline: [], note: 'Brokermint session is authenticated.' }); await ctx.close(); await browser.close(); process.exit(0); }
 
+    // Pull the transaction list, then ENRICH each non-closed deal from its detail
+    // (/transactions/{id}): the list view lacks closing_date and often shows
+    // commission 0, while the detail carries closing_date (epoch ms) +
+    // total_gross_commission. Commission = the gross check the brokerage receives
+    // at closing; fall back to the list's office_commissions_net when gross is 0.
     const res = await page.evaluate(async (today) => {
-      const r = await fetch('/transactions?reference_date=' + today + '&per_page=500&page=1',
-        { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-      const ct = r.headers.get('content-type') || '';
-      if (!/json/i.test(ct)) return { httpError: r.status, ct };
-      return { data: await r.json() };
+      const HDR = { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
+      const CLOSED = /clos|cancel|archiv|expired|withdraw|terminat|dead|fell/i;
+      const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
+      const lr = await fetch('/transactions?reference_date=' + today + '&per_page=500&page=1', HDR);
+      if (!/json/i.test(lr.headers.get('content-type') || '')) return { httpError: lr.status };
+      const entries = (await lr.json()).entries || [];
+      const open = entries.filter((e) => !CLOSED.test(e.status || ''));
+      const deals = [];
+      for (const e of open) {
+        let closing_ms = null, gross = 0;
+        try {
+          const dr = await fetch('/transactions/' + e.id, HDR);
+          if (/json/i.test(dr.headers.get('content-type') || '')) {
+            const d = await dr.json();
+            closing_ms = d.closing_date || null;          // epoch ms (only on the detail)
+            gross = num(d.total_gross_commission);
+          }
+        } catch (_) {}
+        const net = num(e.office_commissions_net);
+        deals.push({
+          address: [e.address, e.city, [e.state, e.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || e.transaction_name || '(unnamed deal)',
+          sale_price: num(e.price),
+          commission: gross > 0 ? gross : net,
+          gross_commission: gross, office_net: net,
+          close_date_ms: closing_ms,
+          status: (e.status || '').toString(),
+        });
+      }
+      return { entries_count: entries.length, open_count: open.length, deals, fields_seen: entries[0] ? Object.keys(entries[0]) : [] };
     }, TODAY).catch((e) => ({ jsErr: String(e).slice(0, 160) }));
 
-    if (res.jsErr || res.httpError || !res.data || !Array.isArray(res.data.entries)) {
-      emit({ ok: false, error: 'fetch_failed', detail: res.jsErr || `HTTP ${res.httpError || '?'} ${res.ct || ''}` });
+    if (res.jsErr || res.httpError || !Array.isArray(res.deals)) {
+      emit({ ok: false, error: 'fetch_failed', detail: res.jsErr || `HTTP ${res.httpError || '?'}` });
       await ctx.close(); await browser.close(); process.exit(1);
     }
-    const all = res.data.entries;
-    const fieldsSeen = all[0] ? Object.keys(all[0]) : [];
-    const pipeline = all.map(normalize).filter((d) => !CLOSED_RE.test(d.status));
-    log(`fetched ${all.length} txns; ${pipeline.length} in pipeline (non-closed)`);
-    // keep the session warm
+    const pipeline = res.deals.map((d) => ({
+      address: d.address, sale_price: d.sale_price, commission: d.commission,
+      gross_commission: d.gross_commission, office_net: d.office_net,
+      close_date: toISODate(d.close_date_ms), status: d.status,
+    }));
+    const dated = pipeline.filter((d) => d.close_date).length;
+    log(`fetched ${res.entries_count} txns; ${res.open_count} open; ${dated} with a closing date`);
     try { await ctx.storageState({ path: STATE }); } catch (e) {}
-    emit({ ok: true, pipeline, raw_count: all.length, fields_seen: fieldsSeen });
+    emit({ ok: true, pipeline, raw_count: res.entries_count, open_count: res.open_count, dated, fields_seen: res.fields_seen });
     await ctx.close(); await browser.close(); process.exit(0);
   } catch (e) {
     log('FATAL', String(e).slice(0, 200));
