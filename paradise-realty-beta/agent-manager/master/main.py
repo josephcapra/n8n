@@ -809,6 +809,55 @@ def build_app(config: Config | None = None) -> FastAPI:
         refreshes in a background thread. ?fresh=1 forces a re-scan next cycle."""
         return _website_light(app, fresh=fresh)
 
+    # --- mechanic (fleet diagnostics + safe self-healing) ---------------
+    @app.get("/mechanic/status", dependencies=[Depends(require_auth)])
+    def mechanic_status(fresh: bool = False) -> dict:
+        """Read-only fleet diagnostics for the command-center light + details.
+        NON-BLOCKING (the scan shells out to gcloud/pgrep, a few seconds): it
+        returns the cached result immediately and refreshes in the background.
+        ?fresh=1 forces a re-scan next cycle. Diagnose-only — no email, no fix."""
+        return _mechanic_light(app, fresh=fresh)
+
+    @app.post("/mechanic/run", dependencies=[Depends(require_auth)])
+    def mechanic_run(body: dict = Body(default={})) -> dict:
+        """Dispatch the mechanic worker. action: diagnose (read-only) | report
+        (scan + email) | fix (scan + apply SAFE repairs + email) | research."""
+        action = str(body.get("action", "report")).strip()
+        valid = {"diagnose", "report", "fix", "research"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        payload: dict = {"action": action}
+        if body.get("to"):
+            payload["to"] = body["to"]
+        task = TaskSpec(
+            agent="mechanic", kind="mechanic", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        # research/fix can run ~minute+; give them headroom over the default.
+        timeout = 300.0 if action in ("research", "fix") else cfg.task_timeout_s
+        try:
+            result = poll_until(
+                lambda: store.get_task_result(task.id),
+                timeout_s=timeout, interval_s=cfg.poll_interval_s,
+            )
+        except TimeoutExceeded as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="mechanic timed out — is the Mac agent / run_local up?",
+            ) from exc
+        if result.status != TaskStatus.COMPLETED:
+            raise HTTPException(status_code=502, detail=f"mechanic failed: {result.error}")
+        out = result.output or {}
+        # On a fix/diagnose, refresh the light cache so the rail reflects reality.
+        if action in ("fix", "diagnose", "report"):
+            app.state.mech_cache = (time.time(), {
+                "grade": out.get("grade", "?"), "light": out.get("light", "unknown"),
+                "counts": out.get("counts", {}), "findings": out.get("findings", []),
+            })
+        return {"action": action, "grade": out.get("grade"), "counts": out.get("counts"),
+                "fixes": out.get("fixes", []), "research": out.get("research", {})}
+
     # --- jazzysphotos.com site agent ------------------------------------
     # The Website panel dispatches a task to the local 'jazzysphotos-site'
     # agent and polls for its result. Publishing actions block in the agent on
@@ -926,7 +975,8 @@ def build_app(config: Config | None = None) -> FastAPI:
     def tx_dispatch(body: dict = Body(...)) -> dict:
         action = str(body.get("action", "daily_digest")).strip()
         valid = {"daily_digest", "scan", "digest_dry", "reconcile",
-                 "recruiting", "draft_thankyou", "status"}
+                 "recruiting", "draft_thankyou", "tx_detail", "fetch_docs",
+                 "archive_closed", "status"}
         if action not in valid:
             raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
         payload = {"action": action}
@@ -945,6 +995,40 @@ def build_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/tx/result/{task_id}", dependencies=[Depends(require_auth)])
     def tx_result(task_id: str) -> dict:
+        result = store.get_task_result(task_id)
+        if result is None:
+            return {"ready": False}
+        return {
+            "ready": True,
+            "status": result.status,
+            "output": result.output or {},
+            "error": result.error,
+        }
+
+    # --- drip campaign ---------------------------------------------------
+    @app.post("/drip/dispatch", dependencies=[Depends(require_auth)])
+    def drip_dispatch(body: dict = Body(...)) -> dict:
+        action = str(body.get("action", "drip_status")).strip()
+        valid = {"drip_enroll", "drip_tick", "drip_status", "drip_preview",
+                 "campaign_dry", "campaign_test_email", "metrics"}
+        if action not in valid:
+            raise HTTPException(status_code=422, detail=f"unknown action {action!r}")
+        payload = {"action": action}
+        if "segment" in body:
+            payload["segment"] = str(body["segment"])
+        if "limit" in body:
+            payload["limit"] = int(body["limit"])
+        task = TaskSpec(
+            agent="drip-campaign", kind="drip", payload=payload,
+            conversation_id=gen_id("conv"), correlation_id=gen_id("cmd"),
+        )
+        store.put_task(task)
+        log.info("drip-campaign dispatched",
+                 extra={"task_id": task.id, "action": action})
+        return {"task_id": task.id, "action": action}
+
+    @app.get("/drip/result/{task_id}", dependencies=[Depends(require_auth)])
+    def drip_result(task_id: str) -> dict:
         result = store.get_task_result(task_id)
         if result is None:
             return {"ready": False}
@@ -1554,6 +1638,41 @@ def _website_light(app: FastAPI, fresh: bool = False) -> dict:
     if cached is not None:
         out = dict(cached[1])
         out["scanning"] = getattr(app.state, "site_scanning", False)
+        out["age_s"] = int(now - cached[0])
+        return out
+    return {"grade": "?", "light": "unknown", "findings": [], "scanning": True}
+
+
+def _mechanic_light(app: FastAPI, fresh: bool = False) -> dict:
+    """Fleet-diagnostics light for the command center. The diagnose scan shells
+    out (gcloud token check, pgrep, log tail) so it takes a few seconds — like
+    the website light it NEVER blocks: returns the cached result immediately and
+    refreshes in the background when stale (>15 min) or fresh=True. Read-only —
+    it never applies a fix or emails (that's POST /mechanic/run)."""
+    now = time.time()
+    cached = getattr(app.state, "mech_cache", None)         # (ts, result) or None
+    scanning = getattr(app.state, "mech_scanning", False)
+    stale = fresh or cached is None or (now - cached[0] > 900)
+    if stale and not scanning:
+        app.state.mech_scanning = True
+
+        def _bg() -> None:
+            try:
+                from tools.mechanic import run as run_mechanic
+
+                res = run_mechanic(fix=False, do_research=False, send=False)
+                out = {"grade": res.get("grade", "?"), "light": res.get("light", "unknown"),
+                       "counts": res.get("counts", {}), "findings": res.get("findings", [])}
+            except Exception as exc:  # noqa: BLE001 - light is best-effort
+                out = {"grade": "?", "light": "unknown", "error": str(exc)[:200], "findings": []}
+            app.state.mech_cache = (time.time(), out)
+            app.state.mech_scanning = False
+
+        threading.Thread(target=_bg, daemon=True, name="mechanic-light").start()
+
+    if cached is not None:
+        out = dict(cached[1])
+        out["scanning"] = getattr(app.state, "mech_scanning", False)
         out["age_s"] = int(now - cached[0])
         return out
     return {"grade": "?", "light": "unknown", "findings": [], "scanning": True}

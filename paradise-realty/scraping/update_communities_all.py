@@ -33,7 +33,7 @@ SHEET_ID        = "16vVPO8XLEq_KbdLoVOP3jtTyoxqr-Ohjzg_0lMbBFxo"
 TAB             = "Communities"
 TOKEN_FILE      = str(Path.home() / "paradise-realty/api/sheets_token.json")
 CHECKPOINT_FILE = "/tmp/update_communities_checkpoint.json"
-TODAY           = "2026-05-12"
+TODAY           = "2026-05-16"
 PARADISE_BASE   = "https://www.paradiserealtyfla.com"
 NEON_GREEN      = {"red": 0.224, "green": 1.0, "blue": 0.078}
 SCOPES          = [
@@ -189,6 +189,139 @@ def scrape_paradise_url(area_url):
         "Listing_Exterior_Features": mode_val(exteriors),
         "Listing_Sample_Count":      sampled,
         "_price_for_category":       med_price,
+    }
+
+
+# ── NewHomeSource (showingnew.com) scraper ─────────────────────────────────────
+# Builds an in-memory index of the "newhome source" sheet tab (name+county → URL).
+_NHS_INDEX = None
+
+
+def _normalize_for_match(s):
+    """Lower, drop punctuation/whitespace for fuzzy name comparison."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _build_nhs_index(sheets):
+    """Return dict: (norm_name, norm_county) -> NHS URL."""
+    global _NHS_INDEX
+    if _NHS_INDEX is not None:
+        return _NHS_INDEX
+    try:
+        resp = sheets.values().get(
+            spreadsheetId=SHEET_ID, range="newhome source!A:Z"
+        ).execute()
+        rows = resp.get("values", [])
+        if not rows:
+            _NHS_INDEX = {}
+            return _NHS_INDEX
+        h = rows[0]
+        ni = h.index("Community Name") if "Community Name" in h else 0
+        ci = h.index("County")         if "County"         in h else 1
+        ui = h.index("URL Source Link") if "URL Source Link" in h else (
+             h.index("Price Source URL") if "Price Source URL" in h else -1)
+        idx = {}
+        for r in rows[1:]:
+            if ui < 0 or len(r) <= ui: continue
+            name = (r[ni] if len(r) > ni else "").strip()
+            cty  = (r[ci] if len(r) > ci else "").strip()
+            url  = r[ui].strip()
+            if not (name and url): continue
+            cty_norm = _normalize_for_match(re.sub(r"\s*county.*", "", cty, flags=re.I))
+            key = (_normalize_for_match(name), cty_norm)
+            idx[key] = url
+        _NHS_INDEX = idx
+        print(f"[nhs] indexed {len(idx)} communities from 'newhome source' tab")
+    except Exception as e:
+        print(f"[nhs] index error: {e}")
+        _NHS_INDEX = {}
+    return _NHS_INDEX
+
+
+def nhs_lookup(name, county, sheets):
+    """Find NHS URL for a given community name + county."""
+    idx = _build_nhs_index(sheets)
+    cty_norm = _normalize_for_match(re.sub(r"\s*county.*", "", county or "", flags=re.I))
+    name_norm = _normalize_for_match(name)
+    # Exact match
+    if (name_norm, cty_norm) in idx:
+        return idx[(name_norm, cty_norm)]
+    # County-agnostic match (unique name)
+    same = [u for (n, c), u in idx.items() if n == name_norm]
+    if len(same) == 1:
+        return same[0]
+    # Substring match (sheet name contains NHS name or vice versa)
+    candidates = [(n, c, u) for (n, c), u in idx.items()
+                  if c == cty_norm and (name_norm in n or n in name_norm)
+                  and abs(len(n) - len(name_norm)) < 12]
+    if len(candidates) == 1:
+        return candidates[0][2]
+    return ""
+
+
+def scrape_nhs_url(url):
+    """Scrape a showingnew.com community detail page for price range + inventory."""
+    try:
+        r = SESSION.get(url, timeout=20)
+        if r.status_code != 200:
+            return None
+        html = r.text
+    except Exception as e:
+        print(f"  [nhs] fetch error: {e}")
+        return None
+
+    # Price range from the basic-detail-container
+    pr = re.search(r'class=price>\s*\$([\d,]+)\s*-\s*\$([\d,]+)', html)
+    min_price = max_price = None
+    if pr:
+        try:
+            min_price = int(pr.group(1).replace(",", ""))
+            max_price = int(pr.group(2).replace(",", ""))
+        except Exception:
+            pass
+    # Single-price fallback
+    if not min_price:
+        m = re.search(r'class=price>\s*\$([\d,]+)', html)
+        if m:
+            try:
+                min_price = max_price = int(m.group(1).replace(",", ""))
+            except Exception:
+                pass
+
+    # Community Highlights bullets
+    completed = under_constr = 0
+    m = re.search(r'Community Highlights.*?</ul>', html, re.S)
+    bullets_text = m.group(0) if m else html
+    cm = re.search(r'(\d+)\s+Completed\s+Homes?', bullets_text, re.I)
+    if cm:
+        completed = int(cm.group(1))
+    um = re.search(r'(\d+)\s+Under\s+Construction', bullets_text, re.I)
+    if um:
+        under_constr = int(um.group(1))
+
+    inventory = completed + under_constr
+    if min_price is None and inventory == 0:
+        return None
+
+    midpoint = int((min_price + max_price) / 2) if (min_price and max_price) else (min_price or 0)
+    return {
+        "Area_Median_Price":         midpoint if midpoint else "",
+        "Area_Active_Listings":      inventory if inventory else "",
+        "Area_Avg_DOM":              "",
+        "Area_Market_Hotness":       "",
+        "Listing_HOA_Fee":           "",
+        "Listing_HOA_Freq":          "",
+        "Listing_Heating":           "",
+        "Listing_Cooling":           "",
+        "Listing_Roof":              "",
+        "Listing_Sewer":             "",
+        "Listing_Exterior_Features": "",
+        "Listing_Sample_Count":      inventory,
+        "_price_for_category":       min_price,        # bucket by base price, not midpoint
+        "_nhs_min":                  min_price,
+        "_nhs_max":                  max_price,
+        "_nhs_completed":            completed,
+        "_nhs_under_constr":         under_constr,
     }
 
 
@@ -413,8 +546,10 @@ def main():
     city_col        = ci("City")
     builder_col     = ci("Builder")
     builder_url_col = ci("Builder URL")
+    paradise_col    = ci("Paradise URL")
     price_src_col   = ci("Price Source URL")
     status_col      = ci("Status")
+    listings_found_col = ci("Listings Found")
     price_cat_col   = ci("Price Category")
     med_price_col   = ci("Area_Median_Price")
     act_list_col    = ci("Area_Active_Listings")
@@ -460,6 +595,7 @@ def main():
         city        = cell(city_col)
         builder     = cell(builder_col)
         builder_url = cell(builder_url_col)
+        paradise_url = cell(paradise_col)
         price_src   = cell(price_src_col)
 
         if not name:
@@ -478,36 +614,78 @@ def main():
 
         print(f"\n[{row_i}/{total}] {name}", flush=True)
 
-        # ── Step 1: determine source URL ──────────────────────────────────────
+        # ── Step 1+2: try Paradise area page first, then fall back ────────────
+        # Priority: Paradise URL (paradiserealtyfla.com) → Price Source URL
+        #           → Builder URL → DuckDuckGo search
         write_price_src = False
-        if price_src:
-            source_url = price_src
-            print(f"  url: {source_url[:100]}")
-        elif builder_url:
-            source_url = builder_url
-            write_price_src = True          # Price Source URL was empty — fill it
-            print(f"  url (builder): {source_url[:100]}")
-        else:
-            print(f"  searching: '{builder} {name} {city}'…", flush=True)
-            source_url = search_builder_url(name, builder, city, county)
-            if source_url:
-                write_price_src = True
-                print(f"  found: {source_url[:100]}")
+        data = None
+        source_url = ""
+        listings_found_flag = ""
+
+        if paradise_url and "paradiserealtyfla.com" in paradise_url:
+            pu = normalize_url(paradise_url)
+            print(f"  paradise: {pu[:100]}")
+            data = scrape_paradise_url(pu)
+            if data and data.get("Listing_Sample_Count", 0):
+                source_url = pu
+                listings_found_flag = "Yes"
+                print(f"  → {data.get('Area_Active_Listings', 0)} listings on paradise page")
             else:
-                print(f"  [error] no URL found — skipping")
-                errors += 1
-                continue
+                listings_found_flag = "NO"
+                data = None
+                print(f"  → no listings on paradise page, trying fallback")
 
-        source_url = normalize_url(source_url)
+        def _useful(d):
+            if not d: return False
+            sc = d.get("Listing_Sample_Count")
+            mp = d.get("Area_Median_Price") or d.get("_price_for_category")
+            try:
+                if sc and int(sc) > 0: return True
+            except Exception: pass
+            try:
+                if mp and int(mp) > 0: return True
+            except Exception: pass
+            return False
 
-        # ── Step 2: scrape ────────────────────────────────────────────────────
-        if "paradiserealtyfla.com" in source_url:
-            data = scrape_paradise_url(source_url)
-        else:
-            data = scrape_external_url(source_url)
+        if not _useful(data) and price_src:
+            ps_url = normalize_url(price_src)
+            print(f"  fallback price-src: {ps_url[:100]}")
+            if "paradiserealtyfla.com" in ps_url:
+                d2 = scrape_paradise_url(ps_url)
+            elif "showingnew.com" in ps_url:
+                d2 = scrape_nhs_url(ps_url)
+            else:
+                d2 = scrape_external_url(ps_url)
+            if _useful(d2):
+                data = d2; source_url = ps_url
+
+        if not _useful(data):
+            nhs_url = nhs_lookup(name, county, sheets)
+            if nhs_url:
+                print(f"  fallback nhs: {nhs_url[:100]}")
+                d2 = scrape_nhs_url(nhs_url)
+                if _useful(d2):
+                    data = d2; source_url = nhs_url; write_price_src = True
+
+        if not _useful(data) and builder_url:
+            bu = normalize_url(builder_url)
+            print(f"  fallback builder: {bu[:100]}")
+            d2 = scrape_external_url(bu)
+            if _useful(d2):
+                data = d2; source_url = bu; write_price_src = True
+
+        if not _useful(data):
+            print(f"  searching: '{builder} {name} {city}'…", flush=True)
+            found = search_builder_url(name, builder, city, county)
+            if found:
+                fu = normalize_url(found)
+                print(f"  found: {fu[:100]}")
+                d2 = scrape_external_url(fu)
+                if _useful(d2):
+                    data = d2; source_url = fu; write_price_src = True
 
         if not data:
-            print(f"  [error] scrape returned nothing — skipping")
+            print(f"  [error] no data — skipping")
             errors += 1
             continue
 
@@ -562,6 +740,8 @@ def main():
         queue(exterior_col,  data.get("Listing_Exterior_Features"))
         queue(sample_col,    data.get("Listing_Sample_Count"))
         queue(scraped_col,   TODAY)
+        if listings_found_flag:
+            queue(listings_found_col, listings_found_flag)
 
         processed += 1
 

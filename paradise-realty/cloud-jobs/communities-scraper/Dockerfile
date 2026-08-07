@@ -8,6 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Playwright chromium is pre-installed in the base image
 RUN playwright install chromium
 
-COPY update_communities_all.py agentmgr_worker.py ./
+COPY update_communities_all.py agentmgr_worker.py sync_area_pages.py ./
 
 CMD ["python3", "-u", "update_communities_all.py"]

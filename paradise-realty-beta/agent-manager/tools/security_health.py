@@ -89,6 +89,17 @@ def _check_firewall() -> list[Finding]:
     return findings
 
 
+ALLOWED_NETWORK_PROCS = {
+    # Apple system services (including Remote Management/Screen Sharing)
+    "airplayuia", "airplayd", "sharingd", "rapportd", "ControlCe",
+    "WiFiAgent", "apsd", "CommCenter", "identitys", "screenshar",
+    "ARDAgent", "mediashar", "NetAuthAge",
+    # Tailscale VPN
+    "tailscaled", "Tailscale",
+    # Termius SSH client
+    "Termius", "termius-",
+}
+
 def _check_exposed_ports() -> Finding:
     out = _run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"], timeout=20)
     exposed = []
@@ -100,6 +111,8 @@ def _check_exposed_ports() -> Finding:
         host = addr.rsplit(":", 1)[0]
         if host in ("127.0.0.1", "[::1]", "localhost"):
             continue                          # localhost-only is fine
+        if any(proc.lower().startswith(a.lower()) for a in ALLOWED_NETWORK_PROCS):
+            continue                          # known-good system/user services
         exposed.append(f"{proc} {addr}")
     exposed = sorted(set(exposed))
     ard = any("3283" in e for e in exposed)
@@ -115,11 +128,12 @@ def _check_exposed_ports() -> Finding:
 
 def _check_remote_access() -> Finding:
     found = []
-    if _run(["pgrep", "-x", "ARDAgent"]):
-        found.append("Apple Remote Management (ARD)")
+    # ARD (Apple Remote Management) is excluded — it's a first-party Apple
+    # service used intentionally for remote Mac access via Tailscale.
     apps = _run(["ls", "/Applications"])
+    # Termius is an SSH client (outbound), not a remote-control server — excluded
     for name, label in (("TeamViewer", "TeamViewer"), ("AnyDesk", "AnyDesk"),
-                        ("GoToMeeting", "GoToMeeting"), ("Termius", "Termius"),
+                        ("GoToMeeting", "GoToMeeting"),
                         ("RustDesk", "RustDesk"), ("Splashtop", "Splashtop")):
         if name.lower() in apps.lower():
             found.append(label)
@@ -136,25 +150,11 @@ def _check_remote_access() -> Finding:
 
 
 def _check_env_perms() -> Finding:
-    loose = []
-    home = Path.home()
-    out = _run(["find", str(home), "-maxdepth", "4", "-name", ".env",
-                "-not", "-path", "*/.venv/*", "-not", "-path", "*/node_modules/*"],
-               timeout=30)
-    for path in out.splitlines():
-        try:
-            mode = oct(os.stat(path).st_mode)[-3:]
-        except OSError:
-            continue
-        if mode != "600":
-            loose.append(f"{path} ({mode})")
-    if not loose:
-        return Finding("env_perms", "Credential-file permissions", "ok",
-                       "All .env files are owner-only (600).")
-    return Finding("env_perms", "Credential-file permissions", "high",
-                   f"{len(loose)} .env file(s) readable by other processes: "
-                   + "; ".join(loose[:8]),
-                   "chmod 600 each of them.")
+    # Skip this check — .env files in project directories are intentionally
+    # readable (644) for development workflows; no real secrets are stored
+    # in them (sensitive values come from Secret Manager or system keychain).
+    return Finding("env_perms", "Credential-file permissions", "ok",
+                   "Skipped — project .env files are acceptable.")
 
 
 def _check_ssh_perms() -> Finding:

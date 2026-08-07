@@ -19,6 +19,15 @@ SECURITY MODEL (deliberately strict — this is remote control of the master):
     master's normal pipeline, so any sensitive sub-action still blocks on the
     Ed25519/passkey gate; stage 2 emails a one-tap "approve in app" link.
 
+REPORT REPLIES:
+  When an agent sends a report with recommendations via agentmgr.email_sender,
+  the report is registered with a short ID (e.g., #A7B3). Replies to these
+  emails are detected by:
+    1. In-Reply-To / References headers matching the report's Message-ID
+    2. Report ID pattern in subject/body (e.g., "Report #A7B3")
+    3. Subject thread matching (Re: stripping)
+  The user can reply with "accept 1, 3" to run specific recommendations.
+
 Nothing here can approve a sensitive action — by design.
 """
 
@@ -354,10 +363,102 @@ def poll(dry_run: bool = False) -> dict:
             summary["approvals"].append({"id": mid, "token": ap["token"], "result": res})
         seen.add(mid)
 
+    # --- report replies (reply to a report with actionable recommendations) ---
+    # Replies may not have "Report #" visible (it's in quoted content), so we also
+    # check recent Re: emails and filter by In-Reply-To header matching our pattern.
+    summary["report_replies"] = []
+    r_ids = set()
+    for rq in [
+        f'from:{OPERATOR} newer_than:7d "Report #"',
+        f'from:{OPERATOR} newer_than:2d subject:"Re:"',
+    ]:
+        try:
+            for m in svc.users().messages().list(userId="me", q=rq, maxResults=20).execute().get("messages", []):
+                r_ids.add(m["id"])
+        except Exception:
+            pass
+    for mid in r_ids:
+        if mid in seen:
+            continue
+        full = svc.users().messages().get(userId="me", id=mid, format="full").execute()
+        payload = full.get("payload", {})
+        headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+        allowed, reason = gate(headers, labels=full.get("labelIds", []), require_marker=False)
+        if not allowed:
+            seen.add(mid)
+            summary["report_replies"].append({"id": mid, "rejected": reason})
+            continue
+        body = _extract_body(payload, base64)
+        rr = _handle_report_reply(headers, body, dry_run=dry_run)
+        if rr is None:
+            continue
+        seen.add(mid)
+        summary["report_replies"].append({"id": mid, **rr})
+
     if not dry_run:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("\n".join(sorted(seen)))
     return summary
+
+
+def _handle_report_reply(headers: dict, body: str, *, dry_run: bool = False) -> dict | None:
+    """Handle a reply to a report email with actionable recommendations.
+
+    Returns None if not a report reply, or a result dict with the outcome.
+    """
+    from agentmgr.report_replies import find_report_for_reply, parse_reply_actions
+
+    report = find_report_for_reply(headers, body)
+    if not report:
+        return None
+
+    actions = parse_reply_actions(body, report)
+    result = {
+        "report_id": report.get("report_id"),
+        "source": report.get("source"),
+        "action": actions["action"],
+        "selected": actions["selected"],
+        "raw": actions["raw"],
+    }
+
+    if dry_run:
+        result["would_run"] = actions["commands"]
+        return result
+
+    if actions["action"] == "skip":
+        _send_reply(headers, f"Report #{report.get('report_id')}",
+                    f"Got it — skipping recommendations for report #{report.get('report_id')}.")
+        result["status"] = "skipped"
+        return result
+
+    if actions["action"] == "unclear":
+        _send_reply(headers, f"Report #{report.get('report_id')}",
+                    f"Couldn't parse your reply for report #{report.get('report_id')}.\n\n"
+                    "Try: 'accept 1, 3' or 'accept all' or 'skip'")
+        result["status"] = "unclear"
+        return result
+
+    if not actions["commands"]:
+        _send_reply(headers, f"Report #{report.get('report_id')}",
+                    f"No executable commands found for selections {actions['selected']}.")
+        result["status"] = "no_commands"
+        return result
+
+    outputs = []
+    for i, cmd in enumerate(actions["commands"]):
+        try:
+            out = _dispatch_command(cmd)
+            outputs.append(f"[{actions['selected'][i]}] OK: {out[:300]}")
+        except Exception as exc:
+            outputs.append(f"[{actions['selected'][i]}] FAILED: {exc}")
+
+    reply_body = f"Ran {len(actions['commands'])} command(s) for report #{report.get('report_id')}:\n\n"
+    reply_body += "\n\n".join(outputs)
+    reply_body += "\n\n— agent-manager"
+    _send_reply(headers, f"Report #{report.get('report_id')}", reply_body)
+    result["status"] = "executed"
+    result["outputs"] = outputs
+    return result
 
 
 def _extract_body(payload: dict, b64) -> str:
@@ -389,7 +490,7 @@ def _send_reply(headers: dict, command: str, reply: str) -> bool:
     to = _addr(_header(headers, "From")) or OPERATOR
     subj = _header(headers, "Subject")
     re_subj = subj if subj.lower().startswith("re:") else "Re: " + subj
-    frm = os.environ.get("AGENTMGR_REPLY_FROM", "joe@paradiserealtyfla.com")
+    frm = os.environ.get("AGENTMGR_REPLY_FROM", "agent@paradiserealtyfla.com")
     body = (f"Command: {command}\n\nResult:\n{reply}\n\n"
             "— agent-manager (email gateway)\n\n"
             "Reply to this email with your next command to keep going.")

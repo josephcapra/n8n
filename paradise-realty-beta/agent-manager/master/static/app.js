@@ -116,11 +116,13 @@ function showApp() {
   loadStats().then(loadAgents);
   loadSecurity();
   loadWebsiteHealth();
+  loadMechanic();
   loadReports();
   agentsTimer = setInterval(() => {
     loadStats().then(loadAgents);
     loadSecurity();
     loadWebsiteHealth();
+    loadMechanic();
     loadReports();
   }, 12000);
 }
@@ -274,9 +276,9 @@ function switchTarget(name) {
 
 function openAgentChat(a) {
   switchTarget(a.name);
-  // on phones the roster covers the chat — collapse it so the thread shows
+  // on phones the roster covers the chat — hide it so the thread shows
   if (window.matchMedia("(max-width: 860px)").matches)
-    $("rosterPane").classList.add("collapsed");
+    $("rosterPane").classList.remove("expanded");
 }
 
 // Header bar naming the current peer + the composer placeholder.
@@ -425,11 +427,11 @@ async function uploadAttachments() {
   return (await res.json()).attachments;
 }
 
-async function sendMessage(ev) {
-  ev.preventDefault();
+async function sendMessage(ev, opts = {}) {
+  if (ev) ev.preventDefault();
   const input = $("chatInput");
-  let text = input.value.trim();
-  if (!text && !pendingAttachments.length) return;
+  let text = opts.text || input.value.trim();
+  if (!text && !pendingAttachments.length) return null;
 
   const bubbleAtts = pendingAttachments.map((a) => ({
     kind: a.kind, url: a.url, name: a.name,
@@ -444,7 +446,7 @@ async function sendMessage(ev) {
     }
   } catch (e) {
     addBubble("sys", "Upload failed: " + e.message);
-    return;
+    return null;
   }
   pendingAttachments = [];
   renderTray();
@@ -475,9 +477,11 @@ async function sendMessage(ev) {
     if (target === activeTarget) addBubble("master", res.reply);
     else if (threads[target || ""]) threads[target || ""].bubbles.push(
       { role: "master", text: res.reply, atts: [] });
+    return res.reply;  // return for voice mode
   } catch (e) {
     hideThinking(target);
     addBubble("sys", "Error: " + e.message);
+    return null;
   }
 }
 
@@ -527,6 +531,155 @@ function setupDropAndPaste() {
       addFiles(files);
     }
   });
+}
+
+/* ---- voice conversation (Web Speech API) ---- */
+let voiceRecognition = null;
+let voiceSynthesis = window.speechSynthesis;
+let voiceActive = false;
+let voiceListening = false;
+let voiceSpeaking = false;
+
+function voiceSupported() {
+  return "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+}
+
+function initVoice() {
+  if (!voiceSupported()) {
+    $("talkBtn").disabled = true;
+    $("talkBtn").title = "Voice not supported in this browser";
+    return;
+  }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = true;
+  voiceRecognition.lang = "en-US";
+
+  voiceRecognition.onstart = () => {
+    voiceListening = true;
+    updateVoiceUI();
+  };
+
+  voiceRecognition.onend = () => {
+    voiceListening = false;
+    updateVoiceUI();
+  };
+
+  voiceRecognition.onresult = (e) => {
+    const result = e.results[e.results.length - 1];
+    const transcript = result[0].transcript;
+    $("chatInput").value = transcript;
+    if (result.isFinal && transcript.trim()) {
+      voiceListening = false;
+      updateVoiceUI();
+      voiceSendAndSpeak(transcript.trim());
+    }
+  };
+
+  voiceRecognition.onerror = (e) => {
+    voiceListening = false;
+    updateVoiceUI();
+    if (e.error !== "aborted" && e.error !== "no-speech") {
+      addBubble("sys", "Voice error: " + e.error);
+    }
+  };
+}
+
+function updateVoiceUI() {
+  const btn = $("talkBtn");
+  btn.classList.toggle("listening", voiceListening);
+  btn.classList.toggle("speaking", voiceSpeaking);
+  btn.innerHTML = voiceListening ? "&#128308;" :  // red circle when listening
+                  voiceSpeaking ? "&#128266;" :   // speaker when speaking
+                  "&#127908;";                     // microphone default
+  btn.title = voiceListening ? "Listening… (click to stop)" :
+              voiceSpeaking ? "Speaking… (click to stop)" :
+              "Voice conversation (click to talk)";
+}
+
+async function voiceSendAndSpeak(text) {
+  const reply = await sendMessage(null, { text });
+  if (reply && voiceActive) {
+    speakText(reply);
+  }
+}
+
+function speakText(text) {
+  if (!voiceSynthesis) return;
+  voiceSynthesis.cancel();
+  const clean = text
+    .replace(/```[\s\S]*?```/g, " code block ")
+    .replace(/`[^`]+`/g, " code ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " link ")
+    .replace(/\n+/g, ". ")
+    .slice(0, 2000);
+
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  utterance.onstart = () => {
+    voiceSpeaking = true;
+    updateVoiceUI();
+  };
+  utterance.onend = () => {
+    voiceSpeaking = false;
+    updateVoiceUI();
+    if (voiceActive) {
+      setTimeout(startListening, 500);
+    }
+  };
+  utterance.onerror = () => {
+    voiceSpeaking = false;
+    updateVoiceUI();
+  };
+
+  voiceSynthesis.speak(utterance);
+}
+
+function startListening() {
+  if (!voiceRecognition || voiceListening) return;
+  try {
+    voiceRecognition.start();
+  } catch (e) {
+    // already started
+  }
+}
+
+function stopListening() {
+  if (!voiceRecognition) return;
+  try {
+    voiceRecognition.stop();
+  } catch (e) {}
+}
+
+function stopSpeaking() {
+  if (voiceSynthesis) voiceSynthesis.cancel();
+  voiceSpeaking = false;
+  updateVoiceUI();
+}
+
+function toggleVoice() {
+  if (voiceListening) {
+    stopListening();
+    voiceActive = false;
+  } else if (voiceSpeaking) {
+    stopSpeaking();
+    voiceActive = false;
+  } else {
+    voiceActive = true;
+    startListening();
+  }
+}
+
+function wireVoice() {
+  initVoice();
+  $("talkBtn").onclick = toggleVoice;
 }
 
 /* ---- approvals ---- */
@@ -742,6 +895,60 @@ async function loadModels() {
   };
 }
 
+function openHealthSheet() {
+  $("healthSheet").classList.remove("hidden");
+  const summary = $("healthSummary");
+  const findings = $("healthFindings");
+
+  // Get agents from the last render
+  const agents = Object.values(agentsByName);
+  const localDown = agents.filter((a) => a.group === "local" && a.status !== "online");
+  const cloudUnknown = agents.filter((a) => a.status === "unknown");
+  const cloudOffline = agents.filter((a) => a.group !== "local" && a.status === "offline");
+
+  if (localDown.length === 0 && cloudUnknown.length === 0 && cloudOffline.length === 0) {
+    summary.textContent = "All systems operational";
+    findings.innerHTML = `<p class="muted" style="padding:8px 0">✓ All ${agents.length} agents are healthy.</p>`;
+    return;
+  }
+
+  const issues = [];
+  if (localDown.length > 0) {
+    issues.push(`${localDown.length} local agent(s) down`);
+  }
+  if (cloudOffline.length > 0) {
+    issues.push(`${cloudOffline.length} cloud agent(s) offline`);
+  }
+  if (cloudUnknown.length > 0) {
+    issues.push(`${cloudUnknown.length} agent(s) with unknown status`);
+  }
+  summary.textContent = issues.join(", ");
+
+  let html = "";
+  if (localDown.length > 0) {
+    html += `<div class="finding sev-high"><div class="sev">DOWN</div><div class="fbody">
+      <div class="ftitle">Local agents not responding</div>
+      <div class="fdetail">${localDown.map(a => a.title || a.name).join(", ")}</div>
+      <div class="ffix">Check that the agent processes are running on this Mac</div>
+    </div></div>`;
+  }
+  if (cloudOffline.length > 0) {
+    html += `<div class="finding sev-medium"><div class="sev">OFFLINE</div><div class="fbody">
+      <div class="ftitle">Cloud agents offline</div>
+      <div class="fdetail">${cloudOffline.map(a => a.title || a.name).join(", ")}</div>
+      <div class="ffix">These Cloud Run jobs are not currently deployed or have errors</div>
+    </div></div>`;
+  }
+  if (cloudUnknown.length > 0) {
+    html += `<div class="finding sev-low"><div class="sev">UNKNOWN</div><div class="fbody">
+      <div class="ftitle">Status unknown</div>
+      <div class="fdetail">${cloudUnknown.map(a => a.title || a.name).join(", ")}</div>
+      <div class="ffix">Cloud status check may have timed out — try refreshing</div>
+    </div></div>`;
+  }
+  findings.innerHTML = html;
+}
+
 let lastSecurity = null;
 function secLabel(s) {
   return s.light === "unknown" ? "couldn’t check"
@@ -858,6 +1065,13 @@ function findingRow(f) {
   const title = document.createElement("div");
   title.className = "ftitle";
   title.textContent = f.title || "";
+  if (f.agent) {
+    const who = document.createElement("span");
+    who.className = "muted small";
+    who.style.marginLeft = "6px";
+    who.textContent = "[" + f.agent + "]";
+    title.appendChild(who);
+  }
   const detail = document.createElement("div");
   detail.className = "fdetail";
   detail.textContent = f.detail || "";
@@ -940,6 +1154,132 @@ function renderWebsiteHealth(s) {
     p.style.padding = "8px 4px 0";
     p.textContent = "Passing: " + passed.join(" · ");
     list.appendChild(p);
+  }
+}
+
+/* ---- mechanic light (agent fleet diagnostics) ---- */
+let lastMech = null;
+let mechPollTimer = null;
+
+function mechLabel(s) {
+  if (!s || s.light === "unknown") return s && s.scanning ? "scanning…" : "unavailable";
+  const g = s.grade && s.grade !== "?" ? "grade " + s.grade : s.light;
+  return s.scanning ? g + " · rescanning…" : g;
+}
+
+async function loadMechanic() {
+  try {
+    const s = await api("GET", "/mechanic/status");
+    lastMech = s;
+    setLight("mechLight", s.light || "unknown", mechLabel(s));
+    if (s.scanning && s.light === "unknown") pollMechUntilReady();
+  } catch (e) {
+    setLight("mechLight", "unknown", "unavailable");
+  }
+}
+
+async function openMechSheet(forceFresh) {
+  $("mechSheet").classList.remove("hidden");
+  try {
+    lastMech = await api("GET", "/mechanic/status" + (forceFresh ? "?fresh=1" : ""));
+    setLight("mechLight", lastMech.light || "unknown", mechLabel(lastMech));
+  } catch (e) {
+    $("mechSummary").textContent = "Couldn’t run diagnostics: " + e.message;
+    $("mechFindings").innerHTML = "";
+    return;
+  }
+  renderMechanic(lastMech);
+  if (lastMech.scanning) pollMechUntilReady();
+}
+
+function pollMechUntilReady() {
+  clearTimeout(mechPollTimer);
+  const tick = async () => {
+    let s;
+    try { s = await api("GET", "/mechanic/status"); } catch (e) { return; }
+    lastMech = s;
+    setLight("mechLight", s.light || "unknown", mechLabel(s));
+    if (!$("mechSheet").classList.contains("hidden")) renderMechanic(s);
+    if (s.scanning) mechPollTimer = setTimeout(tick, 2000);
+  };
+  mechPollTimer = setTimeout(tick, 2000);
+}
+
+function renderMechanic(s) {
+  const summary = $("mechSummary");
+  const list = $("mechFindings");
+  list.innerHTML = "";
+  if (!s || (s.light === "unknown" && !s.scanning)) {
+    summary.textContent = "Diagnostics unavailable" + (s && s.error ? ": " + s.error : ".");
+    return;
+  }
+  if (s.scanning && !(s.findings || []).length) {
+    summary.textContent = "Scanning the agent fleet…";
+    return;
+  }
+  const c = s.counts || {};
+  const issues = (c.critical || 0) + (c.high || 0) + (c.medium || 0) + (c.low || 0);
+  summary.textContent = "Grade " + (s.grade || "?") + " — " +
+    (issues ? (c.critical || 0) + " critical · " + (c.high || 0) + " high · " +
+      (c.medium || 0) + " medium · " + (c.low || 0) + " low" : "all agents healthy ✅") +
+    (s.scanning ? " · rescanning…" : "");
+  const order = { critical: 0, high: 1, medium: 2, low: 3, ok: 4 };
+  const all = s.findings || [];
+  const issuesList = all.filter((f) => f.severity !== "ok")
+    .sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+  if (!issuesList.length) {
+    const ok = document.createElement("p");
+    ok.className = "muted small";
+    ok.style.padding = "0 4px";
+    ok.textContent = "No problems found — every agent is working. ✅";
+    list.appendChild(ok);
+  } else {
+    issuesList.forEach((f) => list.appendChild(findingRow(f)));
+  }
+  const passed = all.filter((f) => f.severity === "ok").map((f) => f.title);
+  if (passed.length) {
+    const p = document.createElement("p");
+    p.className = "muted small";
+    p.style.padding = "8px 4px 0";
+    p.textContent = "Passing: " + passed.join(" · ");
+    list.appendChild(p);
+  }
+}
+
+// Dispatch a mechanic action that runs the worker (fix / research) and emails.
+async function runMechanic(action) {
+  const summary = $("mechSummary");
+  $("mechSheet").classList.remove("hidden");
+  summary.textContent = action === "research"
+    ? "Researching new best practices & AI features… (~1 min)"
+    : "Applying safe auto-fixes… (posts the report here; emails only if there's an issue)";
+  $("mechFindings").innerHTML = "";
+  try {
+    const r = await api("POST", "/mechanic/run", { action });
+    if (action === "research") {
+      summary.textContent = "Research saved to the learnings file.";
+      const pre = document.createElement("pre");
+      pre.className = "small";
+      pre.style.whiteSpace = "pre-wrap";
+      pre.textContent = (r.research && r.research.summary) ||
+        (r.research && r.research.note) || "(no output)";
+      $("mechFindings").appendChild(pre);
+    } else {
+      lastMech = await api("GET", "/mechanic/status");
+      setLight("mechLight", lastMech.light || "unknown", mechLabel(lastMech));
+      renderMechanic(lastMech);
+      const fixes = r.fixes || [];
+      if (fixes.length) {
+        const p = document.createElement("p");
+        p.className = "small";
+        p.style.padding = "8px 4px 0";
+        p.textContent = "Fixes applied: " + fixes.map((x) =>
+          (x.ok ? "✅ " : x.ok === false ? "❌ " : "• ") + x.label).join(" · ");
+        $("mechFindings").appendChild(p);
+      }
+    }
+  } catch (e) {
+    summary.textContent = "Mechanic run failed: " + e.message;
   }
 }
 
@@ -1029,6 +1369,7 @@ function renderAgents(data) {
   agentsByName = {};
   agents.forEach((a) => (agentsByName[a.name] = a));
   $("agentCount").textContent = agents.length;
+  $("mobileAgentCount").textContent = agents.length;
   const list = $("agentList");
   list.innerHTML = "";
   agents.forEach((a) => {
@@ -1115,6 +1456,44 @@ function renderAgents(data) {
       actionEl.textContent = "💵 Pull → Finance forecast";
       actionEl.title = "Pull pending Brokermint deals and send them to the Finance Agent to forecast";
       actionEl.onclick = (e) => { e.stopPropagation(); runPipelineAction({ action: "pull" }, "Pull pipeline → Finance"); };
+    } else if (a.name === "transaction-coordinator") {
+      actionEl = document.createElement("div");
+      actionEl.className = "ac-act-row";
+      const dg = document.createElement("button");
+      dg.className = "ac-act";
+      dg.textContent = "📋 Daily digest";
+      dg.title = "Pull Paperless Pipeline + Brokermint, reconcile, and email the top-priority digest";
+      dg.onclick = (e) => { e.stopPropagation(); runTcAction({ action: "daily_digest" }, "Daily digest"); };
+      const rc = document.createElement("button");
+      rc.className = "ac-act ac-act-alt";
+      rc.textContent = "🎯 Recruiting";
+      rc.title = "List co-op (other-side) agents to thank, with FL DBPR mailing addresses";
+      rc.onclick = (e) => { e.stopPropagation(); runTcAction({ action: "recruiting" }, "Recruiting targets"); };
+      const rx = document.createElement("button");
+      rx.className = "ac-act ac-act-alt";
+      rx.textContent = "🔄 Reconcile";
+      rx.title = "Check every under-contract Paperless deal is pending/closed in Brokermint";
+      rx.onclick = (e) => { e.stopPropagation(); runTcAction({ action: "reconcile" }, "Reconcile"); };
+      actionEl.append(dg, rc, rx);
+    } else if (a.name === "drip-campaign") {
+      actionEl = document.createElement("div");
+      actionEl.className = "ac-act-row";
+      const st = document.createElement("button");
+      st.className = "ac-act";
+      st.textContent = "📊 Status";
+      st.title = "Show enrollment + sending stats";
+      st.onclick = (e) => { e.stopPropagation(); runDripAction({ action: "drip_status" }, "Drip status"); };
+      const en = document.createElement("button");
+      en.className = "ac-act ac-act-alt";
+      en.textContent = "➕ Enroll";
+      en.title = "Enroll more leads (cold segment by default)";
+      en.onclick = (e) => { e.stopPropagation(); runDripAction({ action: "drip_enroll" }, "Enroll leads"); };
+      const tk = document.createElement("button");
+      tk.className = "ac-act ac-act-alt";
+      tk.textContent = "📤 Send now";
+      tk.title = "Manually trigger a scheduler tick to send due emails";
+      tk.onclick = (e) => { e.stopPropagation(); runDripAction({ action: "drip_tick" }, "Send emails"); };
+      actionEl.append(st, en, tk);
     } else {
       actionEl = document.createElement("button");
       actionEl.className = "ac-act";
@@ -1743,10 +2122,19 @@ function newClaudeSession() {
 }
 function shq(s) { return "'" + s.replace(/'/g, "'\\''") + "'"; }
 function toggleTerminal(force) {
-  const consolePane = document.querySelector(".pane.console");
+  const consolePane = $("consolePane");
   const pane = $("terminalPane");
-  const open = force !== undefined ? force : pane.classList.contains("hidden");
-  pane.classList.toggle("hidden", !open);
+  const isMobile = window.matchMedia("(max-width: 860px)").matches;
+  // on mobile, use "expanded" class (accordion section); on desktop, use "hidden"
+  const isOpen = isMobile ? pane.classList.contains("expanded") : !pane.classList.contains("hidden");
+  const open = force !== undefined ? force : !isOpen;
+  if (isMobile) {
+    pane.classList.toggle("expanded", open);
+    pane.classList.toggle("hidden", !open);
+    $("mobileTermHead").classList.toggle("expanded", open);
+  } else {
+    pane.classList.toggle("hidden", !open);
+  }
   consolePane.classList.toggle("term-open", open);
   $("terminalToggle").classList.toggle("active", open);
   if (open) setTimeout(() => $("termInput").focus(), 50);
@@ -2144,6 +2532,86 @@ async function runPipelineAction(payload, label) {
   }
 }
 
+let tcBusy = false;
+// The transaction-coordinator card's buttons dispatch here. daily_digest emails
+// the top-priority digest (+ relays the pending pipeline to the Finance Agent);
+// recruiting / reconcile return read-only summaries shown in the chat.
+async function runTcAction(payload, label) {
+  if (tcBusy) return;
+  tcBusy = true;
+  setAgentRunning("transaction-coordinator", true);
+  addBubble("sys", "Transaction Coordinator · " + (label || payload.action) + "…");
+  try {
+    const { task_id } = await api("POST", "/tx/dispatch", { body: payload });
+    const started = Date.now();
+    while (Date.now() - started < 20 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const r = await api("GET", "/tx/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        const failed = r.status === "FAILED";
+        const o = r.output || {};
+        const note = o.note || (failed ? (r.error || "failed") : "done");
+        addBubble("sys", "Transaction Coordinator · " + (label || payload.action) +
+          " — " + (failed ? "❌ " : "✅ ") + note);
+        if (o.stdout) addBubble("sys", String(o.stdout).slice(0, 1800));
+        if (Array.isArray(o.relayed_to) && o.relayed_to.length)
+          addBubble("sys", "Relayed to: " + o.relayed_to.join(", "));
+        return;
+      }
+    }
+    addBubble("sys", "Transaction Coordinator · still running — check back. (Is the Mac agent up?)");
+  } catch (e) {
+    addBubble("sys", "Transaction Coordinator · ✗ " + e.message);
+  } finally {
+    tcBusy = false;
+    setAgentRunning("transaction-coordinator", false);
+  }
+}
+
+let dripBusy = false;
+async function runDripAction(payload, label) {
+  if (dripBusy) return;
+  dripBusy = true;
+  setAgentRunning("drip-campaign", true);
+  addBubble("sys", "Drip Campaign · " + (label || payload.action) + "…");
+  try {
+    const { task_id } = await api("POST", "/drip/dispatch", { body: payload });
+    const started = Date.now();
+    while (Date.now() - started < 5 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const r = await api("GET", "/drip/result/" + encodeURIComponent(task_id));
+      if (r.ready) {
+        const failed = r.status === "FAILED";
+        const o = r.output || {};
+        let note = "";
+        // Parse the JSON output for status display
+        if (o.stdout) {
+          try {
+            const parsed = JSON.parse(o.stdout);
+            if (parsed.result) {
+              const res = parsed.result;
+              if (res.enrolled !== undefined) note = `Enrolled: ${res.enrolled}`;
+              else if (res.sentThisTick !== undefined) note = `Sent: ${res.sentThisTick}, Today: ${res.sentToday}/${res.cap}`;
+              else if (res.active !== undefined) note = `Active: ${res.active}, Sent today: ${res.sentToday}/${res.dailyCap}`;
+              else if (res.skipped) note = res.reason === "outside_hours" ? "Outside sending hours (8 AM - 6 PM ET)" : res.reason;
+              else note = "done";
+            }
+          } catch (_) { note = "done"; }
+        }
+        addBubble("sys", "Drip Campaign · " + (label || payload.action) +
+          " — " + (failed ? "❌ " : "✅ ") + (note || (failed ? (r.error || "failed") : "done")));
+        return;
+      }
+    }
+    addBubble("sys", "Drip Campaign · still running — check back.");
+  } catch (e) {
+    addBubble("sys", "Drip Campaign · ✗ " + e.message);
+  } finally {
+    dripBusy = false;
+    setAgentRunning("drip-campaign", false);
+  }
+}
+
 async function webAddPhoto() {
   const file = $("webPhotoFile").files[0];
   const title = $("webPhotoTitle").value.trim();
@@ -2216,6 +2684,7 @@ function init() {
     e.target.value = "";
   };
   setupDropAndPaste();
+  wireVoice();
 
   // command center
   $("refreshAgents").onclick = loadAgents;
@@ -2223,17 +2692,90 @@ function init() {
   $("agentFilter").onkeydown = (e) => { if (e.key === "Escape") { e.target.value = ""; applyAgentFilter(); } };
   $("chatBack").onclick = () => switchTarget(null);   // back to the Manager
   $("refreshReports").onclick = loadReports;
+  $("healthRow").onclick = openHealthSheet;
+  $("closeHealth").onclick = () => $("healthSheet").classList.add("hidden");
+  $("refreshHealth").onclick = openHealthSheet;
   $("secRow").onclick = () => openSecuritySheet(false);
   $("closeSecurity").onclick = () => $("securitySheet").classList.add("hidden");
   $("refreshSecurity").onclick = () => openSecuritySheet(true);
   $("siteRow").onclick = () => openSiteSheet(false);
   $("closeSite").onclick = () => { $("siteSheet").classList.add("hidden"); clearTimeout(sitePollTimer); };
   $("refreshSite").onclick = () => openSiteSheet(true);
+  $("mechRow").onclick = () => openMechSheet(false);
+  $("closeMech").onclick = () => { $("mechSheet").classList.add("hidden"); clearTimeout(mechPollTimer); };
+  $("refreshMech").onclick = () => openMechSheet(true);
+  $("mechFix").onclick = () => runMechanic("fix");
+  $("mechResearch").onclick = () => runMechanic("research");
   $("newAgentBtn").onclick = openNewAgent;
   $("closeNewAgent").onclick = () => $("newAgentSheet").classList.add("hidden");
   $("newAgentForm").onsubmit = submitNewAgent;
   $("uploadBtn").onclick = () => $("fileInput").click();
-  $("rosterToggle").onclick = () => $("rosterPane").classList.toggle("collapsed");
+  $("rosterToggle").onclick = () => {
+    $("rosterPane").classList.toggle("expanded");
+    // close the other panel if open
+    if ($("rosterPane").classList.contains("expanded"))
+      $("actionsPane").classList.remove("expanded");
+  };
+  $("actionsToggle").onclick = () => {
+    $("actionsPane").classList.toggle("expanded");
+    // close the other panel if open
+    if ($("actionsPane").classList.contains("expanded"))
+      $("rosterPane").classList.remove("expanded");
+  };
+
+  // mobile accordion section headers — tap to expand/collapse
+  $("mobileAgentsHead").onclick = () => {
+    const isCollapsed = $("rosterPane").classList.toggle("collapsed");
+    $("mobileAgentsHead").classList.toggle("expanded", !isCollapsed);
+  };
+  $("mobileChatHead").onclick = () => {
+    const isCollapsed = $("consolePane").classList.toggle("collapsed");
+    $("mobileChatHead").classList.toggle("expanded", !isCollapsed);
+  };
+  $("mobileTermHead").onclick = (ev) => {
+    if (ev.target.closest(".msh-action")) return;
+    const pane = $("terminalPane");
+    const isExpanded = pane.classList.toggle("expanded");
+    pane.classList.toggle("hidden", !isExpanded);
+    $("mobileTermHead").classList.toggle("expanded", isExpanded);
+    if (isExpanded) {
+      newClaudeSession();
+      setTimeout(() => $("termInput").focus(), 50);
+    }
+  };
+  $("mobileTermClear").onclick = (ev) => {
+    ev.stopPropagation();
+    $("termOutput").innerHTML = "";
+    newClaudeSession();
+  };
+  $("mobileSystemHead").onclick = () => {
+    const isCollapsed = $("actionsPane").classList.toggle("collapsed");
+    $("mobileSystemHead").classList.toggle("expanded", !isCollapsed);
+  };
+
+  // on mobile, move the terminal to be a direct child of cc-grid (after its header)
+  function adjustMobileLayout() {
+    const isMobile = window.matchMedia("(max-width: 860px)").matches;
+    const term = $("terminalPane");
+    const termHead = $("mobileTermHead");
+    const ccGrid = document.querySelector(".cc-grid");
+    const console = $("consolePane");
+    if (isMobile) {
+      if (term.parentElement === console) {
+        termHead.insertAdjacentElement("afterend", term);
+      }
+      // set initial expanded states for mobile headers
+      $("mobileAgentsHead").classList.add("expanded");
+      $("mobileChatHead").classList.add("expanded");
+      $("mobileSystemHead").classList.add("expanded");
+    } else {
+      if (term.parentElement === ccGrid) {
+        console.appendChild(term);
+      }
+    }
+  }
+  adjustMobileLayout();
+  window.addEventListener("resize", adjustMobileLayout);
   $("claudeBtn").onclick = () => {
     addBubble("sys", "Claude console — type a goal and it runs on your Mac. Read-only commands run automatically; anything else asks for approval.");
     focusChat("");

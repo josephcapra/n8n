@@ -71,6 +71,10 @@ class Config:
     # agents -> gs://paradise-agents-backup; restore the latest on demand).
     backup_dir: str = "/Users/User/paradise-realty"
     backup_timeout_s: float = 1800.0         # tar + GCS upload (or download + extract) of all agents
+    # youtube-upload agent: dir holding youtube_auth.js + upload_video.js and
+    # the uploads/<video>/ working dirs (video.json + optional captions.srt).
+    youtube_dir: str = "/Users/User/youtube-auth"
+    youtube_timeout_s: float = 7200.0        # resumable multi-GB upload + captions
     # brokermint-pipeline agent: dir holding bm_pipeline.js (pulls pending deals
     # -> commission + closing date via the logged-in Brokermint session).
     brokermint_pipeline_dir: str = "/Users/User/paperless-tc"
@@ -167,6 +171,8 @@ def load_config() -> Config:
         cfo_timeout_s=float(_env("AGENTMGR_CFO_TIMEOUT_S", "600")),
         backup_dir=_env("AGENTMGR_BACKUP_DIR", "/Users/User/paradise-realty"),
         backup_timeout_s=float(_env("AGENTMGR_BACKUP_TIMEOUT_S", "1800")),
+        youtube_dir=_env("AGENTMGR_YOUTUBE_DIR", "/Users/User/youtube-auth"),
+        youtube_timeout_s=float(_env("AGENTMGR_YOUTUBE_TIMEOUT_S", "7200")),
         brokermint_pipeline_dir=_env("AGENTMGR_BROKERMINT_PIPELINE_DIR", "/Users/User/paperless-tc"),
         brokermint_pipeline_timeout_s=float(_env("AGENTMGR_BROKERMINT_PIPELINE_TIMEOUT_S", "900")),
         transaction_coordinator_dir=_env("AGENTMGR_TC_DIR", "/Users/User/paperless-tc"),

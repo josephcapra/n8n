@@ -20,6 +20,54 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ParadiseRealty-SitemapSync/1.
 MAX_URLS = 40_000
 MAX_BYTES = 50 * 1024 * 1024  # 50 MB
 
+# Stale URLs that must never appear in our sitemaps. The root-level
+# /atlantic-fields-* pages 301 → wrongpage.io for legal reasons (see
+# bing_seo_scan.py); the matching blog posts and the Esplanade 404 are dead
+# pages that Google/Bing still remember from earlier crawls. Filter them out
+# of any URL list before sharding so they can never reappear, even if a stale
+# source (RG admin scraper, CSV, or sheet) reintroduces them.
+#
+# Use path-substring matching so future variants of the same content
+# (e.g. /atlantic-fields-foo/, /blog/atlantic-fields-bar/) are filtered too.
+# This is intentionally broad — paths under /martin-county/atlantic-fields-*
+# are the canonical replacements and are unaffected (the bad paths are all
+# root-level or under /blog/).
+BLOCKED_PATH_PREFIXES = (
+    "/atlantic-fields-",
+    "/esplanade-at-tradition-port-st-lucie",
+)
+BLOCKED_PATH_SUBSTRINGS = (
+    "/blog/5-good-things-about-atlantic-fields",
+    "/blog/atlantic-fields-",
+    "/blog/top-50-questions-about-atlantic-fields",
+)
+
+
+def _is_blocked(url: str) -> bool:
+    """True if `url`'s path is on the permanent deny-list."""
+    from urllib.parse import urlparse
+    path = (urlparse(url).path or "").lower().rstrip("/") + "/"
+    if any(path.startswith(p) for p in BLOCKED_PATH_PREFIXES):
+        return True
+    if any(s in path for s in BLOCKED_PATH_SUBSTRINGS):
+        return True
+    return False
+
+
+def _drop_blocked(urls: list[str]) -> list[str]:
+    """Filter out deny-listed URLs, logging each drop once."""
+    kept: list[str] = []
+    dropped = 0
+    for u in urls:
+        if _is_blocked(u):
+            logger.info(f"  Dropping deny-listed URL: {u}")
+            dropped += 1
+        else:
+            kept.append(u)
+    if dropped:
+        logger.info(f"  Deny-list filtered {dropped} URL(s)")
+    return kept
+
 
 def _fetch(url: str, max_attempts: int = 4) -> bytes:
     delays = [1, 2, 4]
@@ -107,6 +155,7 @@ def collect_urls(
 
     dupes = len(raw_urls) - len(urls)
     logger.info(f"  Collected {len(urls):,} unique URLs (removed {dupes} duplicates)")
+    urls = _drop_blocked(urls)
     return urls
 
 
@@ -133,6 +182,7 @@ def collect_urls_from_csv(csv_path: str) -> list[str]:
                 urls.append(u)
 
     logger.info(f"  Loaded {len(urls):,} unique URLs from column '{url_col}'")
+    urls = _drop_blocked(urls)
     return urls
 
 

@@ -116,6 +116,24 @@ header {
 .model-select { flex: 0 0 auto; width: auto; margin: 0; padding: 8px 9px;
   font-size: 12px; max-width: 150px; border-radius: 9px; }
 
+/* --- talk button (voice conversation) --- */
+.talk-btn { position: relative; transition: color 0.15s, background 0.15s; }
+.talk-btn.listening { color: var(--red); background: rgba(255,93,93,0.15);
+  animation: talk-pulse 1s infinite ease-in-out; }
+.talk-btn.speaking { color: var(--ok); background: rgba(58,210,159,0.15); }
+.talk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+@keyframes talk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,93,93,0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255,93,93,0); }
+}
+/* voice status indicator next to the input */
+.voice-status { font-size: 12px; color: var(--muted); display: flex;
+  align-items: center; gap: 6px; flex: 0 0 auto; }
+.voice-status.listening { color: var(--red); }
+.voice-status.speaking { color: var(--ok); }
+.voice-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+  animation: talk-pulse 1s infinite ease-in-out; }
+
 /* --- attachment tray --- */
 .attach-tray { display: flex; flex-wrap: wrap; gap: 8px; }
 .attach-item { position: relative; display: flex; align-items: center; gap: 6px;
@@ -293,20 +311,86 @@ button.icon.mini { font-size: 15px; padding: 2px 6px; }
 .check input { width: auto; margin: 0; }
 
 @media (max-width: 860px) {
-  .only-mobile { display: inline-block; }
-  .cc-grid { display: flex; flex-direction: column; }
-  .pane.roster { border-right: 0; border-bottom: 1px solid var(--line);
-    max-height: 40vh; }
-  .pane.roster.collapsed { display: none; }
-  .pane.actions { border-left: 0; border-top: 1px solid var(--line);
-    flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px; }
-  .pane.actions .pane-head { width: 100%; padding: 4px; }
-  .pane.actions .rail-btn { width: auto; flex: 1 1 40%; margin: 0;
-    text-align: center; }
-  .stat-tiles { width: 100%; }
-  /* stack chat above terminal on narrow screens */
-  .pane.console { flex-direction: column; }
-  .terminal { border-left: 0; border-top: 2px solid var(--line); max-height: 45vh; }
+  .only-mobile { display: inline-block !important; }
+  .mobile-section-head.only-mobile { display: flex !important; }
+  /* hide the desktop-only header toggles */
+  #terminalToggle, #actionsToggle, #rosterToggle { display: none !important; }
+
+  /* mobile accordion layout — vertical stack, scrollable */
+  .cc-grid { display: flex !important; flex-direction: column !important;
+    overflow-y: auto !important; -webkit-overflow-scrolling: touch;
+    grid-template-columns: none !important; }
+
+  /* mobile section headers — tap to expand/collapse */
+  .mobile-section-head { display: flex !important; align-items: center; gap: 10px;
+    padding: 14px 16px; background: var(--panel2); border-bottom: 1px solid var(--line);
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    position: sticky; top: 0; z-index: 5; }
+  .mobile-section-head:active { background: var(--bg); }
+  .mobile-section-head .msh-icon { font-size: 20px; flex: 0 0 auto; }
+  .mobile-section-head .msh-label { flex: 1; font-weight: 600; font-size: 16px; }
+  .mobile-section-head .msh-chevron { font-size: 20px; color: var(--muted);
+    transition: transform 0.2s; }
+  .mobile-section-head.expanded .msh-chevron { transform: rotate(90deg); }
+  .mobile-section-head .msh-action { background: none; border: 0; padding: 6px 10px;
+    color: var(--muted); font-size: 18px; min-width: 40px; min-height: 40px; }
+
+  /* all panes: shown by default, collapsible */
+  .pane.roster { display: flex !important; border-right: 0 !important;
+    border-bottom: 1px solid var(--line); max-height: none; overflow: visible; }
+  .pane.roster.collapsed { display: none !important; }
+  .pane.roster .pane-head { display: none !important; }
+  .pane.roster .agent-list { max-height: 40vh; overflow-y: auto; }
+
+  .pane.console { display: flex !important; flex: none !important; min-height: 0;
+    flex-direction: column !important; border-bottom: 1px solid var(--line); }
+  .pane.console.collapsed { display: none !important; }
+  .chat-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .messages { max-height: 45vh; padding: 14px 10px !important; }
+
+  /* terminal: shown when expanded */
+  .terminal { display: none !important; border-left: 0 !important; border-top: 0;
+    flex-direction: column; background: #070b16;
+    border-bottom: 1px solid var(--line); }
+  .terminal.expanded { display: flex !important; }
+  .terminal .term-head { display: none !important; }
+  .terminal .term-output { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    min-height: 180px; max-height: 40vh; }
+  .terminal .term-input-row { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+
+  .pane.actions { display: flex !important; border-left: 0 !important; border-top: 0;
+    flex-direction: column !important; gap: 0; padding: 0 !important; overflow: visible; }
+  .pane.actions.collapsed { display: none !important; }
+  .pane.actions .pane-head { display: none !important; }
+  .pane.actions .lights { padding: 8px 12px; }
+  .pane.actions .rail-btn { width: calc(100% - 24px); margin: 4px 12px;
+    text-align: left; }
+  .stat-tiles { width: 100%; padding: 8px 12px 16px; }
+  .report-list { padding: 0 12px 12px; }
+
+  /* composer input + buttons: larger tap targets */
+  .composer input { font-size: 16px; padding: 14px 12px; }
+  .composer button { padding: 14px 16px; min-height: 48px; }
+  .composer .icon { font-size: 24px; padding: 10px; min-width: 44px; min-height: 44px; }
+  .model-select { font-size: 13px; padding: 10px; min-height: 44px; }
+  /* bubbles: slightly larger text */
+  .bubble { font-size: 16px; max-width: 92%; }
+  /* header icons: bigger tap targets */
+  header.topbar button.icon { font-size: 22px; padding: 10px; min-width: 44px; min-height: 44px; }
+}
+
+/* extra-small screens (phones in portrait) */
+@media (max-width: 480px) {
+  .composer-row { flex-wrap: wrap; gap: 6px; }
+  .model-select { flex: 1 1 100%; order: -1; max-width: none; }
+  .composer input { flex: 1 1 100%; }
+  .composer button.primary { flex: 1 1 auto; }
+  /* terminal: larger touch targets */
+  .terminal .term-head { padding: 12px 14px; }
+  .terminal .term-head button.icon { font-size: 20px; min-width: 44px; min-height: 44px;
+    padding: 10px; }
+  .terminal .term-input-row { padding: 12px 14px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .terminal .term-input-row input { font-size: 16px; padding: 14px 12px; }
 }
 
 /* --- sessions sheet --- */

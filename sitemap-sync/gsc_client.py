@@ -1,7 +1,9 @@
 """Submit sitemaps to Google Search Console via the Search Console API."""
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import time
 
@@ -16,6 +18,23 @@ SCOPE = "https://www.googleapis.com/auth/webmasters"
 
 
 def _build_service():
+    # Prefer stored OAuth credentials (joe@josephcapra.com) from Secret Manager.
+    # GSC does not accept service accounts as property users, so we use the
+    # verified owner's refresh token stored in GSC_OAUTH_CREDS env var.
+    oauth_json = os.getenv("GSC_OAUTH_CREDS", "").strip()
+    if oauth_json:
+        from google.oauth2.credentials import Credentials
+        info = json.loads(oauth_json)
+        creds = Credentials(
+            token=None,
+            refresh_token=info["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=info["client_id"],
+            client_secret=info["client_secret"],
+            quota_project_id=info.get("quota_project_id", "paradise-automation"),
+        )
+        return build("searchconsole", "v1", credentials=creds)
+
     try:
         creds, _ = google.auth.default(scopes=[SCOPE])
     except google.auth.exceptions.DefaultCredentialsError as e:

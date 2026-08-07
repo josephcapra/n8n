@@ -53,11 +53,19 @@
       <span id="masterStatus" class="master-status"></span>
       <div class="spacer"></div>
       <button id="terminalToggle" class="icon" title="Claude Code">&#129302;</button>
+      <button id="actionsToggle" class="icon only-mobile" title="System &amp; Actions">&#9881;</button>
       <button id="rosterToggle" class="icon only-mobile" title="Agents">&#128101;</button>
       <button id="logoutBtn" class="icon" title="Sign out">&#9211;</button>
     </header>
 
     <div class="cc-grid">
+      <!-- MOBILE: Agents section header -->
+      <div id="mobileAgentsHead" class="mobile-section-head only-mobile">
+        <span class="msh-icon">&#128101;</span>
+        <span class="msh-label">Agents</span>
+        <span id="mobileAgentCount" class="badge">·</span>
+        <span class="msh-chevron">&#8250;</span>
+      </div>
       <!-- LEFT: agent roster -->
       <aside id="rosterPane" class="pane roster">
         <div class="pane-head">AGENTS <span id="agentCount" class="badge">·</span>
@@ -65,12 +73,20 @@
           <button id="relayBtn" class="icon mini" title="Relay graph — who talks to whom">&#128279;</button>
           <button id="refreshAgents" class="icon mini" title="Refresh">&#8635;</button>
         </div>
+        <input id="agentFilter" class="agent-filter" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Filter by name or function…">
         <div id="agentList" class="agent-list"></div>
         <button id="newAgentBtn" class="rail-btn accent">&#43; New agent</button>
       </aside>
 
+      <!-- MOBILE: Chat section header -->
+      <div id="mobileChatHead" class="mobile-section-head only-mobile">
+        <span class="msh-icon">&#128172;</span>
+        <span class="msh-label">Chat</span>
+        <span class="msh-chevron">&#8250;</span>
+      </div>
       <!-- CENTER: console — split horizontally into chat (left) + terminal (right) -->
-      <main class="pane console">
+      <main id="consolePane" class="pane console">
         <!-- LEFT: chat -->
         <div class="chat-col">
           <div id="approvalBanner" class="banner hidden"></div>
@@ -93,6 +109,7 @@
               <button type="button" id="attachBtn" class="icon" title="Attach files or screenshots">&#128206;</button>
               <input id="chatInput" type="text" autocomplete="off"
                      placeholder="Message the manager…  ($ shell · cloud run …)" />
+              <button type="button" id="talkBtn" class="icon talk-btn" title="Voice conversation (hold to talk)">&#127908;</button>
               <button type="submit" class="primary">Send</button>
             </div>
           </form>
@@ -117,13 +134,27 @@
         </section>
       </main>
 
+      <!-- MOBILE: Claude Code section header -->
+      <div id="mobileTermHead" class="mobile-section-head only-mobile">
+        <span class="msh-icon">&#129302;</span>
+        <span class="msh-label">Claude Code</span>
+        <button id="mobileTermClear" class="icon mini msh-action" title="Clear">&#9003;</button>
+        <span class="msh-chevron">&#8250;</span>
+      </div>
+
+      <!-- MOBILE: System section header -->
+      <div id="mobileSystemHead" class="mobile-section-head only-mobile">
+        <span class="msh-icon">&#9881;</span>
+        <span class="msh-label">System &amp; Actions</span>
+        <span class="msh-chevron">&#8250;</span>
+      </div>
       <!-- RIGHT: system lights + actions + status -->
-      <aside class="pane actions">
+      <aside id="actionsPane" class="pane actions">
         <div class="pane-head">SYSTEM</div>
         <div class="lights">
-          <div class="light-row">
+          <div id="healthRow" class="light-row clickable" title="Click to see system health details">
             <span id="healthLight" class="light unknown"></span>
-            <div class="ltext"><div class="lname">Health</div>
+            <div class="ltext"><div class="lname">Health <span class="chevron">&rsaquo;</span></div>
               <div id="healthMsg" class="lmsg muted">checking…</div></div>
           </div>
           <div id="secRow" class="light-row clickable" title="Click to see security deficiencies">
@@ -135,6 +166,11 @@
             <span id="siteLight" class="light unknown"></span>
             <div class="ltext"><div class="lname">Website <span class="chevron">&rsaquo;</span></div>
               <div id="siteMsg" class="lmsg muted">checking…</div></div>
+          </div>
+          <div id="mechRow" class="light-row clickable" title="Click to see agent fleet diagnostics">
+            <span id="mechLight" class="light unknown"></span>
+            <div class="ltext"><div class="lname">Agents <span class="chevron">&rsaquo;</span></div>
+              <div id="mechMsg" class="lmsg muted">checking…</div></div>
           </div>
         </div>
         <div class="pane-head">REPORTS
@@ -337,6 +373,19 @@
     </div>
   </div>
 
+  <!-- ============ HEALTH SHEET ============ -->
+  <div id="healthSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>System health</strong>
+        <div class="spacer"></div>
+        <button id="refreshHealth" class="icon mini" title="Refresh">&#8635;</button>
+        <button id="closeHealth" class="icon">&times;</button>
+      </header>
+      <p id="healthSummary" class="muted small">Checking…</p>
+      <div id="healthFindings"></div>
+    </div>
+  </div>
+
   <!-- ============ SECURITY DEFICIENCIES SHEET ============ -->
   <div id="securitySheet" class="sheet hidden">
     <div class="sheet-card">
@@ -360,6 +409,21 @@
       </header>
       <p id="siteSummary" class="muted small">Checking…</p>
       <div id="siteFindings"></div>
+    </div>
+  </div>
+
+  <!-- ============ MECHANIC (FLEET DIAGNOSTICS) SHEET ============ -->
+  <div id="mechSheet" class="sheet hidden">
+    <div class="sheet-card">
+      <header><strong>Agent fleet diagnostics</strong>
+        <div class="spacer"></div>
+        <button id="mechFix" class="icon mini" title="Apply safe auto-fixes (posts the report here; emails only if there's an issue)">&#128295;</button>
+        <button id="mechResearch" class="icon mini" title="Research new best practices &amp; AI features">&#128218;</button>
+        <button id="refreshMech" class="icon mini" title="Re-scan the fleet now">&#8635;</button>
+        <button id="closeMech" class="icon">&times;</button>
+      </header>
+      <p id="mechSummary" class="muted small">Checking…</p>
+      <div id="mechFindings"></div>
     </div>
   </div>
 

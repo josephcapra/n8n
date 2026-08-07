@@ -33,12 +33,15 @@ import uvicorn
 from agent.local_agent import (
     process_assistant_task,
     process_backup_task,
+    process_blog_task,
     process_brokermint_pipeline_task,
     process_cfo_task,
     process_jazzysphotos_task,
     process_lead_task,
+    process_mechanic_task,
     process_security_task,
     process_task,
+    process_transaction_task,
 )
 from agentmgr.approval_gate import ApprovalGate
 from agentmgr.config import Config
@@ -84,8 +87,10 @@ def main() -> int:
         state_backend="memory",
         job_runner="local",
         api_token=_ADMIN_TOKEN,
-        rp_id="localhost",
-        origin="http://localhost:8080",
+        # Default to localhost; override via env so the same runner can be
+        # reached over Tailscale (HTTPS MagicDNS name) with WebAuthn/Face ID.
+        rp_id=os.environ.get("AGENTMGR_RP_ID", "localhost"),
+        origin=os.environ.get("AGENTMGR_ORIGIN", "http://localhost:8080"),
         approval_public_key=None,           # approvals come via the PWA passkey
         poll_interval_s=0.2,
         task_timeout_s=900.0,               # agentic loops can run a while
@@ -127,6 +132,8 @@ def main() -> int:
             process_assistant_task(task, store, session_mgr, gate, cfg)
         elif task.kind == "security":
             process_security_task(task, store, cfg)
+        elif task.kind == "mechanic":
+            process_mechanic_task(task, store, cfg)
         elif task.kind == "lead":
             process_lead_task(task, store, cfg)
         elif task.kind == "site":
@@ -137,6 +144,8 @@ def main() -> int:
             process_backup_task(task, store, gate, cfg)
         elif task.kind == "brokermint_pipeline":
             process_brokermint_pipeline_task(task, store, cfg)
+        elif task.kind == "transaction":
+            process_transaction_task(task, store, cfg)
         else:
             process_task(
                 task, store, session_mgr, gate,
@@ -163,12 +172,17 @@ def main() -> int:
     threading.Thread(
         target=_loop,
         args=(("assistant", "security-health", "lead-response",
-               "jazzysphotos-site", "backup", "brokermint-pipeline"), "assistant"),
+               "jazzysphotos-site", "backup", "brokermint-pipeline",
+               "mechanic"), "assistant"),
         daemon=True, name="assistant").start()
     # Finance Agent (cfo) gets its own thread — its QBO + Claude runs take a minute+
     # (digest/recurring/alerts), and shouldn't block chat or the terminal.
     threading.Thread(target=_loop, args=(("cfo",), "cfo"),
                      daemon=True, name="cfo").start()
+    # Transaction Coordinator gets its own thread — daily_digest does two browser
+    # pulls + analyze + email (~60s), which shouldn't block chat or the terminal.
+    threading.Thread(target=_loop, args=(("transaction-coordinator",), "tc"),
+                     daemon=True, name="tc").start()
 
     bar = "=" * 60
     print(f"\n{bar}")

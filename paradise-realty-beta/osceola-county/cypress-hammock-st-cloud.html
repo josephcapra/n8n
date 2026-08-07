@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cypress Hammock | New Construction St. Cloud Osceola County FL | Paradise Realty FLA</title>
+<title>Cypress Hammock | St. Cloud Osceola FL | Paradise Realty FLA</title>
 <meta name="description" content="Cypress Hammock by D.R. Horton in St. Cloud, Osceola County FL. New homes in the Mid-Range range. Local specialist provided by Paradise Realty FLA.">
 <link rel="canonical" href="https://www.paradiserealtyfla.com/osceola-county/cypress-hammock-st-cloud/">
-<meta property="og:title" content="Cypress Hammock | New Construction St. Cloud Osceola County FL | Paradise Realty FLA">
+<meta property="og:title" content="Cypress Hammock | St. Cloud Osceola FL | Paradise Realty FLA">
 <meta property="og:description" content="Cypress Hammock by D.R. Horton in St. Cloud, Osceola County FL. New homes in the Mid-Range range. Local specialist provided by Paradise Realty FLA.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.paradiserealtyfla.com/osceola-county/cypress-hammock-st-cloud/">
@@ -93,6 +93,7 @@ a{color:var(--navy) !important;text-decoration:none}
 .referral-box{background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:24px 28px;margin:32px 0}
 .referral-box p{color:#14532d !important;font-size:15px}
 .value-prop{background:var(--navy);color:#fff !important;padding:64px 24px;text-align:center}
+.value-prop h2,.value-prop p,.value-item p,.value-item h3{color:#fff !important}
 .value-prop h2{font-family:'Playfair Display',serif;font-size:clamp(24px,3vw,36px);margin-bottom:16px}
 .value-prop p{font-size:16px;opacity:.8;max-width:640px;margin:0 auto 32px}
 .value-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;max-width:800px;margin:0 auto 40px}
@@ -346,6 +347,32 @@ a{color:var(--navy) !important;text-decoration:none}
 </div>
 <script>
 document.querySelectorAll('.faq-q').forEach(q=>{q.addEventListener('click',()=>q.parentElement.classList.toggle('open'))});
+</script>
+<script>
+(function(){
+  var form=document.querySelector('.contact-form');
+  if(!form)return;
+  form.addEventListener('submit',function(){
+    try{
+      var nm=(document.getElementById('cf-name')||{}).value||'';
+      var parts=nm.trim().split(' ');
+      fetch('https://receivers.leadrouter.realgeeks.com/rest/sites/6b57c97c-3f44-4892-be6d-dc88015e1bfe/leads',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa('paradiserealtyfla:~7GIqG4750DEOq51')},
+        body:JSON.stringify({
+          source:window.location.href,
+          first_name:parts[0]||'',
+          last_name:parts.slice(1).join(' ')||'',
+          email:(document.getElementById('cf-email')||{}).value||'',
+          phone:(document.getElementById('cf-phone')||{}).value||'',
+          notes:(document.getElementById('cf-comment')||{}).value||'',
+          role:'Buyer',
+          activities:[{type:'note',description:'Lead from '+document.title}]
+        })
+      }).catch(function(){});
+    }catch(e){}
+  });
+})();
 </script>
 </body>
 </html>

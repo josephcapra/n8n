@@ -28,6 +28,7 @@ import requests
 
 import area_changes
 import bing_client
+import bing_seo_scan
 import gsc_analytics
 import gsc_client
 
@@ -487,9 +488,18 @@ def build_daily_report(
     gsc_opportunities: list[dict] | None = None,
     gsc_area: dict | None = None,
     area_diff: dict | None = None,
+    seo_recs: list[dict] | None = None,
+    crawl_stats: dict | None = None,
+    blocked_urls: list[dict] | None = None,
+    blocked_value: list[dict] | None = None,
+    recrawl: dict | None = None,
 ) -> str:
     now = datetime.now(ZoneInfo("America/New_York"))
     area_section = build_area_section(area_diff)
+    seo_section = bing_seo_scan.build_seo_section(
+        seo_recs or [], crawl_stats or {}, blocked_urls or [],
+        blocked_value or [], recrawl or {},
+    )
 
     issue_rows = ""
     for i in page_issues[:25]:
@@ -629,7 +639,7 @@ def build_daily_report(
   .footer{{color:#999;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:14px}}
 </style></head><body>
 
-<h1>Daily Website Report — paradiserealtyfla.com</h1>
+<h1>Paradise Daily SEO + Site Digest — paradiserealtyfla.com</h1>
 <p>{now.strftime('%A, %B %d, %Y · %I:%M %p ET')} · Google Search Console · Bing · site health · area pages</p>
 
 {_kpi_block(traffic, quota)}
@@ -637,6 +647,8 @@ def build_daily_report(
 {area_section}
 
 {google_section}
+
+{seo_section}
 
 <h2>Bing job results</h2>
 <table>
@@ -646,6 +658,9 @@ def build_daily_report(
 <tr><td>Top-50 page health checks</td><td>{len(page_issues)} issue(s) found</td></tr>
 <tr><td>On-page SEO scan (top 25)</td><td>{len(seo_findings)} page(s) missing meta/canonical/schema</td></tr>
 <tr><td>Opportunity queries (pos 4-15)</td><td>{len(opportunities)}</td></tr>
+<tr><td>SEO recommendations</td><td>{len(seo_recs or [])} ({sum(1 for r in (seo_recs or []) if r['priority'] == 'HIGH')} high-priority)</td></tr>
+<tr><td>Blocked URLs you rank for</td><td>{len(blocked_value or [])}</td></tr>
+<tr><td>Pages resubmitted for recrawl</td><td>{(recrawl or {}).get('submitted', 0):,}</td></tr>
 </table>
 
 <h2>🅑 Broken pages costing Bing impressions</h2>
@@ -770,6 +785,9 @@ def main() -> int:
     logger.info("[2/6] HEAD-checking top 50 impression URLs")
     top_urls = [p["url"] for p in pages[:50]]
     page_issues = check_top_urls(top_urls)
+    # Drop intentionally-handled URLs (e.g. atlantic-fields legal off-site
+    # redirect) so they don't show as "broken" noise every day.
+    page_issues = [i for i in page_issues if not bing_seo_scan._is_ignored(i.get("url", ""))]
     for i in page_issues:
         logger.warning(f"  PAGE ISSUE: {i}")
 
@@ -834,8 +852,47 @@ def main() -> int:
         logger.error(f"  area-change detection failed (continuing without it): {e}")
 
     # 8. Opportunities + report
-    logger.info("[8/8] Opportunities + email report")
+    logger.info("[8/8] Opportunities + SEO recommendations + email report")
     opportunities = find_opportunity_queries(queries)
+
+    # SEO recommendation scan: synthesize Bing's retired "SEO report" from the
+    # endpoints that still work (crawl health, blocked URLs) + our opportunity
+    # and on-page findings. Safe auto-action: resubmit top live pages to recrawl.
+    crawl_stats = blocked_urls = blocked_value = seo_recs = recrawl = None
+    try:
+        crawl_stats = bing_seo_scan.pull_crawl_stats(api_key, site_url)
+        blocked_urls = bing_seo_scan.pull_blocked_urls(api_key, site_url)
+        blocked_value = bing_seo_scan.cross_ref_blocked_opportunities(
+            blocked_urls, opportunities
+        )
+        # Off-site redirect leaks among ranking pages (the wrongpage.io class):
+        # check the blocked-but-ranking URLs + the top live pages.
+        leak_candidates = [b["url"] for b in (blocked_value or [])]
+        leak_candidates += [p["url"] for p in pages[:40] if p.get("url")]
+        offsite_leaks = bing_seo_scan.detect_offsite_redirects(leak_candidates)
+        seo_recs = bing_seo_scan.build_recommendations(
+            crawl=crawl_stats or {},
+            blocked=blocked_urls or [],
+            blocked_value=blocked_value or [],
+            opportunities=opportunities,
+            seo_findings=seo_findings,
+            page_issues=page_issues,
+            offsite_leaks=offsite_leaks,
+        )
+        recrawl = bing_seo_scan.recrawl_high_value_pages(
+            api_key, site_url, pages, page_issues
+        )
+        logger.info(
+            f"  SEO scan: {len(seo_recs)} recommendation(s), "
+            f"{len(blocked_value)} blocked-but-ranking, "
+            f"{len(offsite_leaks)} off-site redirect leak(s), "
+            f"recrawl={recrawl.get('submitted', 0) if recrawl else 0}"
+        )
+        for r in (seo_recs or []):
+            logger.info(f"    [{r['priority']}] {r['title']}")
+    except Exception as e:  # noqa: BLE001 - never block the report
+        logger.error(f"  SEO scan failed (continuing without it): {e}")
+
     html = build_daily_report(
         traffic=traffic,
         quota=quota,
@@ -851,6 +908,11 @@ def main() -> int:
         gsc_opportunities=gsc_opps,
         gsc_area=gsc_area,
         area_diff=area_diff,
+        seo_recs=seo_recs,
+        crawl_stats=crawl_stats,
+        blocked_urls=blocked_urls,
+        blocked_value=blocked_value,
+        recrawl=recrawl,
     )
     try:
         import agentmgr_reports
@@ -877,9 +939,10 @@ def main() -> int:
             to_email=to_email,
             sg_key=sg_key,
             subject=(
-                f"Website Report {now_et.strftime('%b %d')} — "
+                f"Paradise SEO + Site Digest {now_et.strftime('%b %d')} — "
                 f"B {traffic['last_30_impressions']:,}/30d impr · "
-                f"{len(page_issues)} broken{google_bit}{area_bit}"
+                f"{len(page_issues)} broken · {len(seo_recs or [])} SEO recs"
+                f"{google_bit}{area_bit}"
             ),
             html=html,
         )

@@ -647,6 +647,24 @@ def main():
     print(f"Checkpoint: {CHECKPOINT_FILE}")
 
 
+def _sync_area_pages():
+    """Second stage: push curated Paradise area pages into the community search
+    tool (paradise-finder overlay on GCS) and the dedicated area-page sitemap.
+
+    Runs as a subprocess so its argparse/argv stay isolated from the scraper's.
+    Non-fatal by design: a sync failure must never fail a successful pricing
+    scrape — it is logged loudly so the run summary still surfaces the problem."""
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync_area_pages.py")
+    print("\n[area-sync] starting sync_area_pages.py", flush=True)
+    try:
+        rc = subprocess.run([sys.executable, "-u", script], check=False).returncode
+        print(f"[area-sync] finished rc={rc}"
+              + ("" if rc == 0 else "  *** AREA SYNC FAILED — finder/sitemap not updated ***"))
+    except Exception as e:
+        print(f"[area-sync] WARNING: could not run sync_area_pages.py: {e}")
+
+
 def _run_as_agentmgr_worker(payload, task):
     """Agent-Manager worker entry: run the scrape, return a result summary.
     Honors payload['args'] as a CLI override; otherwise keeps the container's
@@ -657,6 +675,7 @@ def _run_as_agentmgr_worker(payload, task):
     rc = main()
     if rc not in (0, None):
         raise RuntimeError(f"communities-scraper exited with code {rc}")
+    _sync_area_pages()
     return {"result": "communities-scraper completed", "exit_code": int(rc or 0)}
 
 
@@ -666,3 +685,4 @@ if __name__ == "__main__":
         sys.exit(agentmgr_worker.run_as_worker(
             "communities-scraper", _run_as_agentmgr_worker))
     main()
+    _sync_area_pages()

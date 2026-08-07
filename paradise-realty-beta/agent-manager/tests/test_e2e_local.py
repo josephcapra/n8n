@@ -186,7 +186,9 @@ def test_agents_endpoint_includes_details_and_health_fields():
     client = TestClient(build_app(_cfg()))
     resp = client.get("/agents", headers={"Authorization": f"Bearer {_TOKEN}"})
     taylor = next(a for a in resp.json()["agents"] if a["name"] == "taylor")
-    assert "summary" in taylor["details"] and taylor["details"]["relays"] == ["joe-crm-report"]
+    assert "summary" in taylor["details"]
+    # Taylor receives relayed data from joe-crm-report, transform-worker, and zoom-insights
+    assert set(taylor["details"]["relays"]) == {"joe-crm-report", "transform-worker", "zoom-insights"}
     # always present (possibly empty) so the info sheet can render Health
     assert "last_run" in taylor and "last_report" in taylor
 
@@ -243,10 +245,11 @@ class _FakeCloudRun:
     def __init__(self):
         self.ran: list[str] = []
 
-    def list_jobs(self):
-        return [{"name": "bing-daily"}, {"name": "sitemap-sync-weekly"}]
+    def list_jobs(self, region=None):
+        return [{"name": "bing-daily", "region": region or "us-east1"},
+                {"name": "sitemap-sync-weekly", "region": region or "us-east1"}]
 
-    def run_job(self, name):
+    def run_job(self, name, region=None):
         self.ran.append(name)
         return "exec-123"
 

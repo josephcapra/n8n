@@ -380,10 +380,43 @@ def process_lead_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
         return
 
     if data.get("error") == "AUTH_REQUIRED":
-        store.put_task_result(TaskResult(
-            task_id=task.id, status=TaskStatus.FAILED,
-            error="RealGeeks session expired — run office-leads/relogin.js", worker="lead-response"))
-        return
+        log.info("RealGeeks session expired — attempting auto-refresh",
+                 extra={"task_id": task.id})
+        try:
+            from tools.rg_session import refresh_session, check_session
+            refresh_result = refresh_session()
+            if refresh_result.get("ok"):
+                log.info("RealGeeks session refreshed — retrying scan",
+                         extra={"task_id": task.id})
+                proc = subprocess.run(
+                    ["node", _LEAD_SCAN, "--limit", limit],
+                    capture_output=True, text=True, timeout=300,
+                    cwd=str(Path(_LEAD_SCAN).parent),
+                )
+                try:
+                    data = json.loads(proc.stdout.strip())
+                except Exception:
+                    line = (proc.stdout.strip().splitlines() or ["{}"])[-1]
+                    data = json.loads(line)
+                if data.get("error") == "AUTH_REQUIRED":
+                    store.put_task_result(TaskResult(
+                        task_id=task.id, status=TaskStatus.FAILED,
+                        error="RealGeeks session still expired after auto-refresh — run office-leads/relogin.js manually",
+                        worker="lead-response"))
+                    return
+            else:
+                store.put_task_result(TaskResult(
+                    task_id=task.id, status=TaskStatus.FAILED,
+                    error=f"RealGeeks session expired — auto-refresh failed: {refresh_result.get('message', 'unknown')}. Run office-leads/relogin.js manually",
+                    worker="lead-response"))
+                return
+        except Exception as refresh_exc:
+            log.exception("auto-refresh failed", extra={"task_id": task.id})
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED,
+                error=f"RealGeeks session expired — auto-refresh failed: {refresh_exc}. Run office-leads/relogin.js manually",
+                worker="lead-response"))
+            return
 
     leads = data.get("leads", [])
     if not leads:
@@ -392,13 +425,145 @@ def process_lead_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
         parts = [f"{len(leads)} new lead(s) — drafted replies (review before sending):"]
         for L in leads:
             contact = " · ".join(x for x in (L.get("email"), L.get("phone")) if x)
-            parts.append(f"\n• {L.get('name','(no name)')}  [{L.get('score','?')}]  {contact}\n  ↳ {L.get('draft','')}")
+            score_label = L.get("score", "?")
+            ei_score = L.get("eiScore")
+            boost = L.get("boost")
+            ei_info = ""
+            if ei_score is not None and ei_score > 0:
+                reasons = L.get("eiReasons", [])
+                ei_info = f" (EI:{ei_score}"
+                if reasons:
+                    ei_info += f" — {', '.join(reasons[:2])}"
+                ei_info += ")"
+            if boost:
+                ei_info = f" ⬆️ {boost}"
+            parts.append(f"\n• {L.get('name','(no name)')}  [{score_label}]{ei_info}  {contact}\n  ↳ {L.get('draft','')}")
         answer = "\n".join(parts)
     store.put_task_result(TaskResult(
         task_id=task.id, status=TaskStatus.COMPLETED,
         output={"answer": answer, "count": len(leads), "leads": leads},
         worker="lead-response"))
     log.info("lead scan done", extra={"task_id": task.id, "count": len(leads)})
+
+
+# --- Lead Webhook: real-time RealGeeks event processor -----------------------
+
+def process_lead_webhook_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Process a real-time lead event from RealGeeks Outgoing Leads API.
+
+    Events come from the lead-webhook Cloud Run service, which receives webhooks
+    from RealGeeks and creates tasks here. This handler:
+      - Logs high-value activity (hot leads, multiple property views)
+      - Can relay to drip-campaign for immediate engagement
+      - Can relay to office-leads for agent notification
+      - Tracks lead engagement metrics
+
+    Event types:
+      - created: new lead sign-up
+      - updated: lead details changed
+      - activity_added: property views, searches, favorites
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "lead-webhook"
+
+    event_type = str(task.payload.get("event_type", "")).strip()
+    lead_id = task.payload.get("lead_id")
+    lead_data = task.payload.get("lead_data", {})
+    activities = task.payload.get("activities", [])
+    event_id = task.payload.get("event_id")
+
+    log.info("processing lead webhook event",
+             extra={"task_id": task.id, "event_type": event_type,
+                    "lead_id": lead_id, "activities_count": len(activities)})
+
+    result: dict = {
+        "event_type": event_type,
+        "lead_id": lead_id,
+        "event_id": event_id,
+        "processed": True,
+        "actions_taken": [],
+    }
+
+    try:
+        if event_type == "created":
+            name = f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip()
+            source = lead_data.get("source", "unknown")
+            result["lead_name"] = name or "(no name)"
+            result["source"] = source
+            result["actions_taken"].append(f"new lead logged: {name or lead_data.get('email', '?')}")
+
+            # High-value: potential seller or explicit buyer role
+            role = lead_data.get("role", "")
+            if role in ("Seller", "Potential Seller", "Buyer and Seller"):
+                result["high_value"] = True
+                result["actions_taken"].append(f"flagged as high-value ({role})")
+
+        elif event_type == "activity_added":
+            property_views = [a for a in activities if "property" in str(a.get("type", "")).lower()]
+            searches = [a for a in activities if "search" in str(a.get("type", "")).lower()]
+            favorites = [a for a in activities if "favorite" in str(a.get("type", "")).lower()]
+
+            result["property_views"] = len(property_views)
+            result["searches"] = len(searches)
+            result["favorites"] = len(favorites)
+
+            if len(property_views) >= 3:
+                result["high_engagement"] = True
+                result["actions_taken"].append(f"high engagement: {len(property_views)} property views")
+
+            if favorites:
+                result["actions_taken"].append(f"{len(favorites)} new favorite(s)")
+
+        elif event_type == "updated":
+            result["actions_taken"].append("lead details updated")
+
+        else:
+            result["actions_taken"].append(f"unhandled event type: {event_type}")
+
+        result["answer"] = _format_lead_webhook_answer(result)
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.COMPLETED,
+            output=result, worker=worker))
+        log.info("lead webhook event processed",
+                 extra={"task_id": task.id, "event_type": event_type,
+                        "actions": len(result["actions_taken"])})
+
+    except Exception as exc:
+        log.exception("lead webhook processing failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"{type(exc).__name__}: {str(exc)[:200]}", worker=worker))
+
+
+def _format_lead_webhook_answer(result: dict) -> str:
+    """Format webhook result for display in the command center."""
+    event = result.get("event_type", "unknown")
+    parts = [f"Lead event: {event}"]
+
+    if result.get("lead_name"):
+        parts.append(f"Lead: {result['lead_name']}")
+
+    if result.get("source"):
+        parts.append(f"Source: {result['source']}")
+
+    if result.get("high_value"):
+        parts.append("⭐ HIGH VALUE LEAD")
+
+    if result.get("high_engagement"):
+        parts.append("🔥 HIGH ENGAGEMENT")
+
+    if result.get("property_views"):
+        parts.append(f"Property views: {result['property_views']}")
+
+    if result.get("favorites"):
+        parts.append(f"Favorites: {result['favorites']}")
+
+    actions = result.get("actions_taken", [])
+    if actions:
+        parts.append("Actions: " + "; ".join(actions))
+
+    return " | ".join(parts)
 
 
 def process_security_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
@@ -424,14 +589,68 @@ def process_security_task(task: TaskSpec, store: StateStore, cfg: Config) -> Non
              extra={"task_id": task.id, "grade": result.get("grade")})
 
 
+# --- Mechanic: fleet diagnostics + safe self-healing ---------------------
+
+_MECHANIC_ACTIONS = frozenset({"diagnose", "report", "fix", "research"})
+
+
+def process_mechanic_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Mechanic — diagnose the whole agent fleet, optionally apply SAFE repairs,
+    research best practices, and (for 'report'/'fix') email the operator.
+
+    'diagnose' (default) = read-only scan, no email.
+    'report'   = scan + EMAIL the report + save to the command-center store.
+    'fix'      = scan + apply whitelisted SAFE repairs (re-auth, stop duplicate
+                 Master) + email. Code-level fixes are NEVER auto-applied —
+                 they're surfaced as advisory findings.
+    'research' = research new best practices / AI features + append to learnings.
+    """
+    from tools import mechanic
+
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "mechanic"
+    action = str(task.payload.get("action", "diagnose")).strip()
+    if action not in _MECHANIC_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: {sorted(_MECHANIC_ACTIONS)}"))
+        return
+    to = task.payload.get("to")
+    try:
+        if action == "research":
+            result = mechanic.research(append=True)
+        else:
+            result = mechanic.run(
+                fix=(action == "fix"), do_research=False,
+                send=action in ("report", "fix"),
+                **({"to": to} if to else {}),
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("mechanic run failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"{type(exc).__name__}: {exc}", worker=worker))
+        return
+    result["action"] = action
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=TaskStatus.COMPLETED, output=result, worker=worker))
+    log.info("mechanic run finished",
+             extra={"task_id": task.id, "action": action, "grade": result.get("grade")})
+
+
 # Office-Lead CRM actions -> the office-leads Node script each one runs.
 _CRM_ACTIONS = {
     "daily_report": ["office-leads/daily-report.js"],
     "report_only": ["office-leads/daily-report.js", "--no-email"],
     "verify_phantom_tasks": ["office-leads/actions/verify-phantom.js"],
     "clear_phantom_tasks": ["office-leads/actions/bulk-clear-2052.js"],
+    # Auto follow-up: create follow-up tasks for idle leads
+    "auto_followup_dry": ["office-leads/actions/auto-followup.js", "--days=7", "--limit=25"],
+    "auto_followup": ["office-leads/actions/auto-followup.js", "--execute", "--days=7", "--limit=25"],
 }
 # Destructive actions may run ONLY via the SENSITIVE 'crm-task-cleanup' agent.
+# auto_followup creates tasks (writes), so it needs approval but isn't destructive
 _CRM_DESTRUCTIVE = frozenset({"clear_phantom_tasks"})
 
 
@@ -474,10 +693,13 @@ def process_crm_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
 # --- Taylor: marketing / weekly per-agent reports -------------------------
 
 # Taylor actions -> the agent-reports.js invocation each one runs.
+# "on_demand" accepts payload.realtor (e.g. "Jody Dupuis") and emails that one
+# agent's report to the broker.
 _TAYLOR_ACTIONS = {
     "weekly_send": ["office-leads/agent-reports.js", "--to-agents"],
     "review": ["office-leads/agent-reports.js", "--send-individual"],
     "preview": ["office-leads/agent-reports.js"],
+    "on_demand": ["office-leads/agent-reports.js", "--send-individual"],
 }
 
 
@@ -488,6 +710,11 @@ def process_taylor_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
     report (CC the broker). 'review' emails all reports to the broker only.
     'preview' just builds the report files. Reuses the CRM project dir + the
     saved RealGeeks browser session.
+
+    Accepts relayed data from:
+    - joe-crm-report: office_metrics (office-wide CRM summary)
+    - transform-worker: transformed_data (pre-processed/aggregated data)
+    - zoom-insights: zoom_metrics (call activity by agent)
     """
     set_correlation_id(task.correlation_id)
     store.update_task_status(task.id, TaskStatus.RUNNING)
@@ -499,24 +726,71 @@ def process_taylor_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
             error=f"unknown Taylor action {action!r}; valid: {sorted(_TAYLOR_ACTIONS)}"))
         return
     cmd_args = list(_TAYLOR_ACTIONS[action])
+    # on_demand accepts payload.realtor to run a single agent's report.
+    realtor = task.payload.get("realtor")
+    if action == "on_demand":
+        if not realtor:
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+                error="on_demand action requires payload.realtor (e.g. 'Jody Dupuis')"))
+            return
+        cmd_args += [f"--only={realtor}"]
+    elif realtor:
+        cmd_args += [f"--only={realtor}"]
+
+    # Stage any relayed data from upstream agents so agent-reports.js can consume it.
+    relayed_sources = []
+
     # If Joe's CRM Report relayed office metrics, stage them + reuse the roster
     # pull Joe just made (so Taylor doesn't re-pull the office).
     office_metrics = task.payload.get("office_metrics")
     if office_metrics:
-        import json as _json
         mpath = os.path.join(cfg.crm_project_dir, "office-leads", ".office-metrics.json")
         try:
             with open(mpath, "w") as fh:
-                _json.dump(office_metrics, fh)
+                json.dump(office_metrics, fh)
             cmd_args += ["--office-metrics=office-leads/.office-metrics.json", "--cache", "--session"]
+            relayed_sources.append("joe-crm-report")
             log.info("Taylor consuming office metrics relayed from Joe's CRM Report",
                      extra={"task_id": task.id})
         except Exception as e:  # noqa: BLE001
             log.warning("Taylor could not stage relayed office metrics: %s", e)
+
+    # If transform-worker relayed pre-processed data, stage it for the report.
+    transformed_data = task.payload.get("transformed_data")
+    if transformed_data:
+        tpath = os.path.join(cfg.crm_project_dir, "office-leads", ".transformed-data.json")
+        try:
+            with open(tpath, "w") as fh:
+                json.dump(transformed_data, fh)
+            cmd_args += [f"--transformed-data={tpath}"]
+            relayed_sources.append("transform-worker")
+            log.info("Taylor consuming transformed data relayed from transform-worker",
+                     extra={"task_id": task.id})
+        except Exception as e:  # noqa: BLE001
+            log.warning("Taylor could not stage relayed transformed data: %s", e)
+
+    # If zoom-insights relayed call metrics, stage them for the report.
+    zoom_metrics = task.payload.get("zoom_metrics")
+    if zoom_metrics:
+        zpath = os.path.join(cfg.crm_project_dir, "office-leads", ".zoom-metrics.json")
+        try:
+            with open(zpath, "w") as fh:
+                json.dump(zoom_metrics, fh)
+            cmd_args += [f"--zoom-metrics={zpath}"]
+            relayed_sources.append("zoom-insights")
+            log.info("Taylor consuming zoom metrics relayed from zoom-insights",
+                     extra={"task_id": task.id})
+        except Exception as e:  # noqa: BLE001
+            log.warning("Taylor could not stage relayed zoom metrics: %s", e)
+
     command = "node " + " ".join(cmd_args)
-    log.info("EXECUTING Taylor action", extra={"task_id": task.id, "action": action})
+    log.info("EXECUTING Taylor action", extra={"task_id": task.id, "action": action,
+                                                "relayed_sources": relayed_sources})
     output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
     output["action"] = action
+    if relayed_sources:
+        output["relayed_sources"] = relayed_sources
     status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
     store.put_task_result(TaskResult(
         task_id=task.id, status=status, output=output, worker=worker,
@@ -836,6 +1110,102 @@ def process_scout_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
+# --- Drip Campaign + AI conversation engine ------------------------------
+
+# Actions map to the drip CLI (office-leads/drip/index.js). Safe-by-default:
+# the *_dry actions never send; the others target ONLY the joe-mama test number
+# / joe@ test inbox unless converse_live is explicitly invoked for production.
+_DRIP_ACTIONS = {
+    "campaign_dry": "campaign:dry",        # compose + preview, NO send
+    "campaign_test_email": "campaign:test-email",  # full sequence -> joe@ (test)
+    "text_test": "text:test",              # one test text -> joe mama
+    "converse_test": "converse:test",      # synthetic inbound -> JoeGPT -> text joe mama
+    "converse_dry": "converse:dry",        # poll inbound, dry-run (joe-mama whitelist)
+    "converse_live": "converse:live",      # poll inbound + auto-reply (PRODUCTION)
+    "metrics": "metrics --json",           # A/B opener performance scoreboard (read-only)
+    # Email drip scheduler (no texting)
+    "drip_enroll": "drip:enroll",          # enroll leads into email drip (--segment=cold|no_phone|dormant|all --limit=N)
+    "drip_tick": "drip:tick",              # process one scheduler tick (send due emails)
+    "drip_status": "drip:status",          # show enrollment + sending stats
+    "drip_preview": "drip:preview",        # preview enrollable leads (--segment=...)
+    # Tag-based enrollment for realtors (newsletter/officelead tags)
+    "drip_enroll_tagged": "drip:enroll-tagged",    # enroll ALL leads with newsletter OR officelead tags
+    "drip_enroll_tag": "drip:enroll-tag",          # enroll by specific tag (--tag=newsletter|officelead)
+    "drip_preview_tagged": "drip:preview-tagged",  # preview leads with newsletter/officelead tags
+}
+
+
+def process_drip_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Drip 2.0 — personalized email drips (reusing Joe's RG videos) + an
+    automated AI text/email chatbot powered by JoeGPT (Claude), running until
+    Joe takes over. The campaign NEVER blasts the real roster (dry-run only);
+    conversation auto-reply is whitelist-safe unless ``converse_live``.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "drip-campaign"
+    action = str(task.payload.get("action", "converse_dry")).strip()
+    if action not in _DRIP_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: {sorted(_DRIP_ACTIONS)}"))
+        return
+    command = "node office-leads/drip/index.js " + _DRIP_ACTIONS[action]
+    log.info("EXECUTING Drip action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Drip action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- Texting Bot: the live RealGeeks SMS chatbot + on-demand sends -------
+
+def process_texting_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Texting Bot — the live RealGeeks SMS chatbot (auto-replies via JoeGPT +
+    auto-texts new signups for the rolled-out agents). Also sends texts ON
+    DEMAND: action ``send_text`` with payload ``{to, message}``. When the
+    persistent loop is live the send is handed to it (queued, to avoid browser-
+    profile contention); otherwise it opens its own session and sends directly.
+    Actions: send_text / status / converse_dry.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "texting-bot"
+    action = str(task.payload.get("action", "status")).strip()
+    if action == "send_text":
+        to = str(task.payload.get("to", "")).strip()
+        message = str(task.payload.get("message", "")).strip()
+        if not to or not message:
+            store.put_task_result(TaskResult(
+                task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+                error="send_text requires 'to' and 'message' in payload"))
+            return
+        command = "node office-leads/drip/index.js send --to=%s --msg=%s" % (
+            shlex.quote(to), shlex.quote(message))
+    elif action == "status":
+        command = "node office-leads/drip/index.js status"
+    elif action == "converse_dry":
+        command = "node office-leads/drip/index.js converse:dry"
+    else:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown action {action!r}; valid: send_text, status, converse_dry"))
+        return
+    log.info("EXECUTING Texting Bot action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.crm_project_dir, cfg.crm_task_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("Texting Bot action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
 # --- Spend Monitor: Claude Code cost digest (advisory) -------------------
 
 _SPEND_SCRIPT = os.path.join(
@@ -962,6 +1332,93 @@ def process_backup_task(task: TaskSpec, store: StateStore, gate: ApprovalGate,
         task_id=task.id, status=status, output=output, worker=worker,
         error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
     log.info("backup action finished",
+             extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
+
+
+# --- YouTube Upload (Paradise Realty FLA channel) -------------------------
+
+# Safe actions auto-run; publishing to the public channel is gated.
+_YOUTUBE_ACTIONS = frozenset({
+    "status", "test", "list_uploads",   # read-only
+    "upload",                            # uploads PRIVATE (safe — review in Studio)
+    "upload_public",                     # SENSITIVE — publishes to the channel
+})
+
+
+def process_youtube_task(task: TaskSpec, store: StateStore, gate: ApprovalGate,
+                         cfg: Config) -> None:
+    """YouTube Upload — resumable upload of a prepared video dir to the
+    Paradise Realty FLA channel via cfg.youtube_dir's upload_video.js.
+
+    A video dir lives under ``cfg.youtube_dir/uploads/<name>/`` and holds
+    ``video.json`` (file/title/description/tags/chapters) plus an optional
+    ``captions.srt`` that is attached automatically. Safe actions auto-run:
+    ``upload`` sends the video PRIVATE (nothing public until it's reviewed in
+    Studio); ``status`` refreshes the OAuth token + shows quota; ``test``
+    verifies channel wiring; ``list_uploads`` lists the prepared dirs.
+    ``upload_public`` publishes straight to the channel, so it blocks on the
+    approval gate FIRST — on denial nothing is uploaded.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "youtube-upload"
+    action = str(task.payload.get("action", "status")).strip()
+
+    def fail(msg: str) -> None:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker, error=msg))
+
+    if action not in _YOUTUBE_ACTIONS:
+        fail(f"unknown youtube action {action!r}; valid: {sorted(_YOUTUBE_ACTIONS)}")
+        return
+
+    if action == "status":
+        command, note_ok = ("node youtube_auth.js refresh",
+                            "Token refreshed — channel + quota shown above.")
+    elif action == "test":
+        command, note_ok = ("node youtube_auth.js test",
+                            "Channel wiring verified.")
+    elif action == "list_uploads":
+        command, note_ok = ("ls -1t uploads/ 2>/dev/null || echo '(no uploads/ dirs yet)'",
+                            "Prepared video dirs listed above (newest first).")
+    else:  # upload / upload_public
+        vdir = str(task.payload.get("dir", "")).strip()
+        if not vdir:
+            fail("upload needs a 'dir' in the payload — a folder under "
+                 "uploads/ holding video.json (e.g. '2026-07-30-sailfish-cay')")
+            return
+        rel = vdir if vdir.startswith("/") else f"uploads/{vdir}"
+        if action == "upload_public":
+            try:
+                gate.request_approval(
+                    f"youtube: publish {vdir} PUBLIC",
+                    {"action": action, "dir": vdir,
+                     "warning": "publishes this video live on the Paradise Realty FLA channel"},
+                )
+            except ApprovalDenied as exc:
+                fail(f"public upload denied by operator: {exc}")
+                return
+            except ApprovalNotProvisioned as exc:
+                fail(f"approval gate not provisioned: {exc}")
+                return
+            command = f"node upload_video.js {shlex.quote(rel)} --public"
+            note_ok = ("Video uploaded PUBLIC — live on the channel. "
+                       "Set the thumbnail in Studio.")
+        else:
+            command = f"node upload_video.js {shlex.quote(rel)}"
+            note_ok = ("Video uploaded PRIVATE — review it in Studio, set the "
+                       "thumbnail, then flip to Public (or run upload_public).")
+
+    log.info("EXECUTING youtube action", extra={"task_id": task.id, "action": action})
+    output = _run_command(command, cfg.youtube_dir, cfg.youtube_timeout_s)
+    output["action"] = action
+    status = TaskStatus.COMPLETED if output["exit_code"] == 0 else TaskStatus.FAILED
+    if status == TaskStatus.COMPLETED:
+        output["note"] = note_ok
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=output, worker=worker,
+        error=None if status == TaskStatus.COMPLETED else f"exit {output['exit_code']}"))
+    log.info("youtube action finished",
              extra={"task_id": task.id, "action": action, "exit_code": output["exit_code"]})
 
 
@@ -1097,7 +1554,7 @@ def process_brokermint_pipeline_task(task: TaskSpec, store: StateStore, cfg: Con
 
 _TC_ACTIONS = frozenset(
     {"daily_digest", "scan", "digest_dry", "reconcile", "recruiting",
-     "draft_thankyou", "tx_detail", "status"})
+     "draft_thankyou", "tx_detail", "fetch_docs", "archive_closed", "status"})
 
 
 def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
@@ -1127,7 +1584,7 @@ def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> 
         return
 
     arg = ""
-    if action in ("draft_thankyou", "tx_detail"):
+    if action in ("draft_thankyou", "tx_detail", "fetch_docs"):
         arg = str(task.payload.get("tx_id", "")).strip()
         if not arg:
             store.put_task_result(TaskResult(
@@ -1194,6 +1651,54 @@ def process_transaction_task(task: TaskSpec, store: StateStore, cfg: Config) -> 
         error=None if ok else f"exit {out['exit_code']}"))
     log.info("transaction-coordinator finished",
              extra={"task_id": task.id, "action": action, "exit_code": out["exit_code"]})
+
+
+# --- RealGeeks Session: check + auto-refresh ----------------------------
+
+_RG_SESSION_ACTIONS = frozenset({"check", "refresh"})
+
+
+def process_rg_session_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Check or refresh the shared RealGeeks browser session.
+
+    'check'   — quick headless test: is the session valid?
+    'refresh' — full auto-refresh: enters credentials, triggers email 2FA,
+                fetches the code from Gmail via MCP, submits it, and saves
+                the refreshed session.
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+
+    action = task.payload.get("action", "check")
+    if action not in _RG_SESSION_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"unknown action {action!r} — use check or refresh",
+            worker="rg-session"))
+        return
+
+    try:
+        from tools.rg_session import check_session, refresh_session
+
+        if action == "check":
+            result = check_session()
+        else:
+            result = refresh_session()
+    except Exception as exc:
+        log.exception("rg-session task failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED,
+            error=f"rg-session {action} failed: {exc}",
+            worker="rg-session"))
+        return
+
+    status = TaskStatus.COMPLETED if result.get("ok") else TaskStatus.FAILED
+    store.put_task_result(TaskResult(
+        task_id=task.id, status=status, output=result,
+        error=None if result.get("ok") else result.get("message"),
+        worker="rg-session"))
+    log.info("rg-session finished",
+             extra={"task_id": task.id, "action": action, "ok": result.get("ok")})
 
 
 # --- jazzysphotos.com site agent -----------------------------------------
@@ -1726,6 +2231,61 @@ def process_incentive_social_task(task: TaskSpec, store: StateStore) -> None:
             error=f"{type(exc).__name__}: {exc}", worker="incentive-social"))
 
 
+# --- Blog Generator: weekly AI-authored content pipeline ---------------------
+
+_BLOG_ACTIONS = frozenset(
+    {"generate_batch", "generate_dry", "approve", "publish", "status", "preview"})
+
+
+def process_blog_task(task: TaskSpec, store: StateStore, cfg: Config) -> None:
+    """Blog Generator — weekly AI content pipeline.
+
+    Monday: pull live market data (Florida Realtors, Beaches MLS, Fannie Mae),
+    generate 6 blog candidates, create Gemini images, email for approval.
+    On approval (4 of 6): finalize, publish, and index into JoeGPT.
+
+    Actions:
+        generate_batch — create 6 candidates, email for approval
+        generate_dry — create 6 candidates without emailing (preview)
+        approve — process Joe's approval (payload.approved_slots)
+        publish — finalize and publish approved blogs
+        status — show current state (pending, rotation, etc.)
+        preview — show what the next batch would look like
+    """
+    set_correlation_id(task.correlation_id)
+    store.update_task_status(task.id, TaskStatus.RUNNING)
+    worker = "blog-generator"
+    action = str(task.payload.get("action", "status")).strip()
+
+    if action not in _BLOG_ACTIONS:
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"unknown blog action {action!r}; valid: {sorted(_BLOG_ACTIONS)}"))
+        return
+
+    log.info("EXECUTING blog-generator", extra={"task_id": task.id, "action": action})
+
+    try:
+        from tools.blog_generator import run_blog_generator
+        result = run_blog_generator(action, task.payload)
+
+        status = TaskStatus.COMPLETED
+        error = None
+        if result.get("error"):
+            status = TaskStatus.FAILED
+            error = result["error"]
+
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=status, output=result, worker=worker, error=error))
+        log.info("blog-generator finished",
+                 extra={"task_id": task.id, "action": action, "status": status.value})
+    except Exception as exc:  # noqa: BLE001
+        log.exception("blog-generator failed", extra={"task_id": task.id})
+        store.put_task_result(TaskResult(
+            task_id=task.id, status=TaskStatus.FAILED, worker=worker,
+            error=f"{type(exc).__name__}: {exc}"))
+
+
 def run_agent(config: Config | None = None) -> None:
     """Main poll loop. Runs until interrupted (Ctrl-C)."""
     cfg = config or load_config()
@@ -1750,7 +2310,9 @@ def run_agent(config: Config | None = None) -> None:
                "crm-office-leads", "crm-task-cleanup", "jazzysphotos-site",
                "incentive-social", "taylor", "joe-crm-report", "scout",
                "listing-report", "zoom-insights", "cfo", "spend-monitor",
-               "backup", "brokermint-pipeline", "transaction-coordinator")
+               "backup", "brokermint-pipeline", "transaction-coordinator",
+               "mechanic", "drip-campaign", "texting-bot", "rg-session",
+               "lead-response", "blog-generator", "youtube-upload")
     log.info(
         "Mac local agent started — polling (outbound only, no inbound port)",
         extra={"agents": list(handled), "poll_s": cfg.local_agent_poll_s},
@@ -1763,6 +2325,8 @@ def run_agent(config: Config | None = None) -> None:
                         process_assistant_task(task, store, session_mgr, gate, cfg)
                     elif task.kind == "security":
                         process_security_task(task, store, cfg)
+                    elif task.kind == "mechanic":
+                        process_mechanic_task(task, store, cfg)
                     elif task.kind in ("crm", "crm_cleanup"):
                         process_crm_task(task, store, cfg)
                     elif task.kind == "site":
@@ -1776,6 +2340,10 @@ def run_agent(config: Config | None = None) -> None:
                         process_joe_crm_task(task, store, cfg)
                     elif task.kind == "improvement":
                         process_scout_task(task, store, cfg)
+                    elif task.kind == "drip":
+                        process_drip_task(task, store, cfg)
+                    elif task.kind == "texting":
+                        process_texting_task(task, store, cfg)
                     elif task.kind == "listing_report":
                         process_listing_report_task(task, store, cfg)
                     elif task.kind == "zoom_insights":
@@ -1786,10 +2354,20 @@ def run_agent(config: Config | None = None) -> None:
                         process_spend_report_task(task, store, cfg)
                     elif task.kind == "backup":
                         process_backup_task(task, store, gate, cfg)
+                    elif task.kind == "youtube_upload":
+                        process_youtube_task(task, store, gate, cfg)
                     elif task.kind == "brokermint_pipeline":
                         process_brokermint_pipeline_task(task, store, cfg)
                     elif task.kind == "transaction":
                         process_transaction_task(task, store, cfg)
+                    elif task.kind == "rg_session":
+                        process_rg_session_task(task, store, cfg)
+                    elif task.kind == "lead":
+                        process_lead_task(task, store, cfg)
+                    elif task.kind == "lead_event":
+                        process_lead_webhook_task(task, store, cfg)
+                    elif task.kind == "blog":
+                        process_blog_task(task, store, cfg)
                     else:
                         process_task(
                             task, store, session_mgr, gate,

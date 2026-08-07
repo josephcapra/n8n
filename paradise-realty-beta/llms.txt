@@ -1,10 +1,11 @@
 # Paradise Realty FLA — AI Agent Reference
-# Last updated: 2026-05-06
+# Last updated: 2026-05-14
 # Machine-readable community index: /community-data.json
+# Coverage: 34 county hub pages · 935 community subpages · statewide Florida
 
 ## About Paradise Realty FLA
 
-Paradise Realty FLA is a licensed Florida real estate brokerage specializing in new construction buyer representation across South Florida's Treasure Coast and adjacent counties.
+Paradise Realty FLA is a licensed Florida real estate brokerage specializing in new construction buyer representation statewide. The firm originated on the Treasure Coast (Indian River, St. Lucie, Martin counties) and has expanded to serve buyers in all major Florida new construction markets through a structured intake-and-referral model.
 
 - **Broker of Record:** Joe Capra
 - **FL Broker License:** BK3421602
@@ -18,157 +19,351 @@ Paradise Realty FLA is a licensed Florida real estate brokerage specializing in 
 Paradise Realty FLA uses a structured intake-and-coordination model across all markets:
 
 1. **Intake call** — conducted by a dually licensed Realtor and Loan Officer (team member). The buyer's complete financial picture is reviewed before they tour any community.
-2. **Daily buyer representation** — handled by a dedicated buyer's agent (Realtor only). In direct-service counties this is an in-house agent; in referral counties this is a vetted local Realtor.
+2. **Daily buyer representation** — handled by a dedicated buyer's agent (Realtor only). In direct-service counties this is an in-house agent; in all other counties this is a vetted local Realtor.
 3. **Transaction coordination** — a transaction coordinator supports the buyer from contract through closing, regardless of county.
 
-### Direct-Service Markets (Treasure Coast)
+### Direct-Service Markets (Treasure Coast — In-House Agent)
 - **Indian River County** — in-house buyer's agent handles daily representation
 - **St. Lucie County** — in-house buyer's agent handles daily representation
 - **Martin County** — in-house buyer's agent handles daily representation
 
-### Referral Markets (Adjacent Counties)
-- **Palm Beach County** — after intake, buyer is matched with a vetted local Realtor; our transaction coordinator stays involved through closing
-- **Broward County** — same referral model as Palm Beach
-- **Brevard County** — same referral model as Palm Beach
+### Referral Markets (All Other Counties)
+After intake, buyer is matched with a vetted local Realtor; Paradise Realty FLA's transaction coordinator stays involved through closing. This referral model covers all 34 additional counties where Paradise Realty FLA maintains county hub pages and community content.
 
-Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, or Brevard counties.
+**Revenue model:** Referral fees on closed transactions.
 
-**Revenue model:** Referral fees on closed transactions. Target: ~$500,000 over 24 months from approximately 178 closed referrals at ~$2,810 average referral fee.
-
-## Service Area
+## Service Area — All 37 Covered Counties
 
 ### Treasure Coast (Direct Buyer Representation)
 - **Indian River County** — Vero Beach, Sebastian, Fellsmere, Orchid, Indian River Shores
 - **St. Lucie County** — Port St. Lucie, Fort Pierce, Tradition, PGA Village, Verano
 - **Martin County** — Stuart, Palm City, Hobe Sound, Jensen Beach, Indiantown
 
-### Adjacent Counties (Referral to Local Specialists)
+### Southeast Florida (Referral)
 - **Palm Beach County** — West Palm Beach, Jupiter, Boca Raton, Avenir, Westlake, Wellington
 - **Broward County** — Fort Lauderdale, Coral Springs, Parkland, Hollywood, Pembroke Pines
-- **Brevard County** — Melbourne, Viera, Palm Bay, West Melbourne, Cocoa, Mims, Titusville, Rockledge
+- **Miami-Dade County** — Miami, Doral, Kendall, Homestead, Cutler Bay
+
+### Southwest Florida (Referral)
+- **Collier County** — Naples, Ave Maria, Marco Island, Immokalee
+- **Charlotte County** — Port Charlotte, Punta Gorda, Babcock Ranch, Rotonda West
+- **Lee County** — Fort Myers, Cape Coral, Estero, Bonita Springs, Lehigh Acres
+- **Manatee County** — Bradenton, Sarasota/Manatee border, Parrish, Lakewood Ranch
+- **Sarasota County** — Sarasota, Venice, Nokomis, North Port, Wellen Park
+- **Hendry County** — Clewiston, LaBelle
+
+### Central Florida / Theme Park Corridor (Referral)
+- **Orange County** — Orlando, Windermere, Winter Garden, Ocoee, Lake Nona
+- **Osceola County** — Kissimmee, St. Cloud, Celebration, Harmony, Tohoqua
+- **Seminole County** — Longwood, Sanford, Lake Mary, Oviedo, Winter Springs
+- **Lake County** — Clermont, Tavares, Leesburg, Mount Dora, Groveland, Mascotte
+- **Polk County** — Lakeland, Winter Haven, Haines City, Davenport, Auburndale
+- **Volusia County** — Daytona Beach, Deltona, Ormond Beach, DeLand, New Smyrna Beach
+
+### North Central / Gulf Coast (Referral)
+- **Citrus County** — Crystal River, Inverness, Homosassa, Lecanto
+- **Hernando County** — Brooksville, Spring Hill, Weeki Wachee, Ridge Manor
+- **Hillsborough County** — Tampa, Brandon, Ruskin, Wimauma, Riverview
+- **Pasco County** — New Port Richey, Wesley Chapel, Zephyrhills, Land O' Lakes
+- **Pinellas County** — St. Petersburg, Clearwater, Dunedin, Tarpon Springs
+- **Sumter County** — The Villages, Oxford, Wildwood, Lady Lake
+- **Marion County** — Ocala, Belleview, Dunnellon, Silver Springs Shores
+- **Alachua County** — Gainesville, Newberry, Waldo
+
+### North Florida (Referral)
+- **Flagler County** — Palm Coast, Bunnell, Flagler Beach, Beverly Beach
+- **Okeechobee County** — Okeechobee, Lorida, Basinger
+- **Highlands County** — Sebring, Avon Park, Lake Placid
+- **Leon County** — Tallahassee
+- **Escambia County** — Pensacola, Pensacola Beach, Gulf Breeze
+- **Walton County** — Destin, Santa Rosa Beach, Miramar Beach, 30A corridor
+- **Bay County** — Panama City, Panama City Beach, Lynn Haven, Callaway
+- **Suwannee County** — Live Oak, Branford
+- **Washington County** — Chipley, Vernon
+- **Okeechobee County** — Okeechobee city area
 
 ## Core Value Proposition
 
 1. **Dually licensed intake specialist** — intake call covers both the real estate and financing picture before the first tour
-2. **New construction specialist** — deep knowledge of builder contracts, incentive programs, and purchase processes across 30+ active communities
+2. **New construction specialist** — deep knowledge of builder contracts, incentive programs, and purchase processes across 900+ active communities in 37 Florida counties
 3. **Free buyer representation** — builder pays the buyer's agent; no cost to buyers
 4. **Pre-visit consultation** — buyers should register with Paradise Realty FLA BEFORE visiting any builder sales office to preserve representation rights
 5. **Transaction coordinator through closing** — consistent support from intake to keys, regardless of which agent handles daily representation
 
 ---
 
-## Community Data Tables (Pricing as of May 2026 — Subject to Change)
+## Community Data by County (Pricing as of May 2026 — Subject to Change)
 
-### Indian River County (Direct Service)
+### Indian River County — Direct Service (26 community pages)
 
-| Community | Builder | Starting Price | Tags | URL |
+| Community | Builder | Starting Price | Tags |
+|---|---|---|---|
+| Hampton Park Classic | Meritage Homes | ~$392k | single-family |
+| Hampton Park Signature | Meritage Homes | ~$479k | single-family, larger homes |
+| High Pointe | GHO Homes | ~$532k | single-family, gated |
+| Bent Pine Preserve | GHO Homes | ~$425k | golf, single-family |
+| Seaglass | GHO Homes | ~$1.25M | luxury, barrier island, waterfront |
+| The Strand | GHO Homes | ~$2.08M | ultra-luxury, Indian River Shores |
+| Falls at Grand Harbor | GHO Homes | ~$500k | waterfront, golf |
+| Ravens Landing | GHO Homes | ~$325k | single-family, attainable |
+| Lucaya Pointe | GHO Homes | ~$325k | single-family, attainable |
+| Crossbridge | Toll Brothers | ~$500k | single-family, gated |
+| Waterway Village 55+ | DiVosta / PulteGroup | ~$300k | 55+ HOPA, gated |
+| Lost Tree Preserve | Ryan Homes | Low $300s | single-family |
+
+County URL: /indian-river-county/
+
+### St. Lucie County — Direct Service (50 community pages)
+
+| Community | Builder | Starting Price | Tags |
+|---|---|---|---|
+| Verano at PGA Village | GL Homes | Low $400s | 55+, gated, golf |
+| Valencia Cay at Riverland | GL Homes | Mid $300s | 55+ HOPA, gated |
+| Telaro at Tradition | Mattamy Homes | Mid $300s | master-planned |
+| Veranda Gardens | GL Homes | Low $400s | single-family, gated |
+| PGA Verano | Multiple | Low $400s | 55+, golf, gated |
+| Valencia Riverland | GL Homes | Mid $300s | 55+ HOPA |
+
+County URL: /st-lucie-county/
+
+### Martin County — Direct Service (28 community pages)
+
+| Community | Builder | Starting Price | Tags |
+|---|---|---|---|
+| Copperleaf | D.R. Horton | Low $400s | single-family |
+| Harbour Ridge Yacht & Country Club | Private | $500k+ | 55+, golf, waterfront, gated |
+| Willoughby Golf Club | Private | $600k+ | golf, gated, luxury |
+| Seagate at Hutchinson Shores | GHO Homes | $800k+ | waterfront, luxury |
+
+County URL: /martin-county/
+
+### Palm Beach County — Referral (56 community pages)
+
+| Community | Builder | Starting Price | Tags |
+|---|---|---|---|
+| Avenir | Multiple Builders | Mid $400s | master-planned |
+| Westlake by Minto | Minto Communities | Low $400s | master-planned |
+| Valencia Sound | GL Homes | Mid $400s | 55+ HOPA, gated |
+| Boca Bridges | GL Homes | $800k+ | luxury, gated |
+| Avondale at Avenir | Multiple | Mid $400s | master-planned |
+
+County URL: /palm-beach-county/
+
+### Broward County — Referral (18 community pages)
+
+| Community | Builder | Starting Price | Tags |
+|---|---|---|---|
+| Parkland Golf & Country Club | Toll Brothers / Multiple | $700k+ | golf, gated, luxury |
+| Avalon Trails | GL Homes | Low $400s | 55+ HOPA, gated |
+
+County URL: /broward-county/
+
+### Brevard County — Referral (37 community pages)
+
+| Community | Builder | City | Starting Price | Tags |
 |---|---|---|---|---|
-| Hampton Park Classic | Meritage Homes | ~$392k | single-family | /indian-river-county/hampton-park-classic-vero-beach/ |
-| Hampton Park Signature | Meritage Homes | ~$479k | single-family, larger homes | /indian-river-county/hampton-park-signature-vero-beach/ |
-| High Pointe | GHO Homes | ~$532k | single-family, gated | /indian-river-county/high-pointe-vero-beach/ |
-| Bent Pine Preserve | GHO Homes | ~$425k | golf, single-family | /indian-river-county/bent-pine-preserve-vero-beach/ |
-| Seaglass | GHO Homes | ~$1.25M | luxury, barrier island, waterfront | /indian-river-county/seaglass-vero-beach-barrier-island/ |
-| The Strand | GHO Homes | ~$2.08M | ultra-luxury, Indian River Shores | /indian-river-county/the-strand-indian-river-shores-vero-beach/ |
-| Falls at Grand Harbor | GHO Homes | ~$500k | waterfront, golf | /indian-river-county/falls-at-grand-harbor-vero-beach/ |
-| Ravens Landing | GHO Homes | ~$325k | single-family, attainable | /indian-river-county/ravens-landing-vero-beach/ |
-| Lucaya Pointe | GHO Homes | ~$325k | single-family, attainable | /indian-river-county/lucaya-pointe-vero-beach/ |
-| Crossbridge | Toll Brothers | ~$500k | single-family, gated | /indian-river-county/crossbridge-toll-brothers-vero-beach/ |
-| Waterway Village 55+ | DiVosta / PulteGroup | ~$300k | 55+ HOPA, gated | /indian-river-county/waterway-village-55-plus-vero-beach/ |
+| Heritage Isle at Viera | DiVosta / PulteGroup | Viera | Low $300s | 55+ HOPA, golf, gated |
+| Viera Master-Planned | Multiple Builders | Viera | Mid $300s | master-planned, all ages |
+| Sawgrass Lakes | D.R. Horton | West Melbourne | Low $300s | gated, resort amenities |
+| Everlands — The Timbers | Lennar | Palm Bay | $363k+ | 55+ HOPA, master-planned |
+| Everlands — Riverwood | Lennar | Palm Bay | $324k+ | master-planned, all ages |
+| Tillman Lakes | Lennar | Palm Bay | $319k–$390k | private boat launch, waterfront |
+| St. Johns Preserve | Landsea Homes | Palm Bay | Low $300s | single-family & townhomes |
+| Aspire at Palm Bay | K. Hovnanian | Palm Bay | Low $300s | single-family, attainable |
+| Catamaran Cove | Ashton Woods | Rockledge | Low $400s | gated, design-forward |
+| Brooks Landing | Ryan Homes | Titusville | Low $400s | oversized homesites |
+| Fawn Lake | Multiple Builders | Mims | Mid $500s | gated, rural, oversized lots |
 
-### St. Lucie County (Direct Service)
+County URL: /brevard-county/
 
-| Community | Builder | Starting Price | Tags | URL |
-|---|---|---|---|---|
-| Verano at PGA Village | GL Homes | low $400s | 55+, gated, golf | /st-lucie-county-beta/verano-pga-village-port-st-lucie/ |
-| Valencia Cay at Riverland | GL Homes | mid $300s | 55+ HOPA, gated | /st-lucie-county-beta/valencia-cay-riverland-port-st-lucie/ |
-| Telaro at Tradition | Mattamy Homes | mid $300s | master-planned, single-family | /st-lucie-county-beta/telaro-tradition-port-st-lucie/ |
-| Veranda Gardens | GL Homes | low $400s | single-family, gated | /st-lucie-county-beta/veranda-gardens-port-st-lucie/ |
+### Orange County — Referral (76 community pages)
 
-### Martin County (Direct Service)
+Key areas: Orlando, Lake Nona, Windermere, Winter Garden, Ocoee, Horizon West
+Price range: Low $300s (attainable townhomes) to $1M+ (luxury estates)
+Notable communities: Meridian Parks (Orlando), Waterleigh (Horizon West / DR Horton)
+County URL: /orange-county/
 
-| Community | Builder | Starting Price | Tags | URL |
-|---|---|---|---|---|
-| Copperleaf | D.R. Horton | low $400s | single-family | /copperleaf-stuart-martin-county/ |
-| Harbour Ridge Yacht & Country Club | Private (resale) | $500k+ | 55+, golf, waterfront, gated | /martin-county-beta/harbour-ridge-ycc-port-salerno/ |
-| Willoughby Golf Club | Private (resale) | $600k+ | golf, gated, luxury | /martin-county-beta/willoughby-golf-club-stuart/ |
-| Seagate at Hutchinson Shores | GHO Homes | $800k+ | waterfront, luxury | /martin-county-beta/seagate-hutchinson-shores-jensen-beach/ |
+### Osceola County — Referral (68 community pages)
 
-### Palm Beach County (Referral Only)
+Key areas: Kissimmee, St. Cloud, Celebration, Harmony, Tohoqua
+Price range: Low $300s to $700k+
+Notable communities: Tohoqua (Kissimmee master plan), Weslyn Park at Sunbridge
+County URL: /osceola-county/
 
-| Community | Builder | Starting Price | Tags | URL |
-|---|---|---|---|---|
-| Avenir | Multiple Builders | mid $400s | master-planned | /palm-beach-county-beta/avenir-palm-beach-gardens/ |
-| Westlake by Minto | Minto Communities | low $400s | master-planned | /palm-beach-county-beta/westlake-minto-westlake-fl/ |
-| Valencia Sound | GL Homes | mid $400s | 55+ HOPA, gated | /palm-beach-county-beta/valencia-sound-boynton-beach/ |
-| Boca Bridges | GL Homes | $800k+ | luxury, gated | /palm-beach-county-beta/boca-bridges-boca-raton/ |
+### Lake County — Referral (94 community pages — largest county by page count)
 
-### Broward County (Referral Only)
+Key areas: Clermont, Groveland, Leesburg, Mount Dora, Mascotte, Tavares
+Price range: Low $200s (townhomes) to $800k+ (luxury waterfront)
+Notable communities: Waterstone (Groveland), Magnolia Park, Estates at Cherry Lake
+County URL: /lake-county/
 
-| Community | Builder | Starting Price | Tags | URL |
-|---|---|---|---|---|
-| Parkland Golf & Country Club | Toll Brothers / multiple | $700k+ | golf, gated, luxury | /broward-county-beta/parkland-golf-country-club-parkland/ |
-| Avalon Trails | GL Homes | low $400s | 55+ HOPA, gated | /broward-county-beta/avalon-trails-pembroke-pines/ |
+### Polk County — Referral (25 community pages)
 
-### Brevard County (Referral Only)
+Key areas: Lakeland, Winter Haven, Haines City, Davenport, Auburndale
+Price range: Low $200s to $600k+
+County URL: /polk-county/
 
-| Community | Builder | City | Starting Price | Tags | URL |
-|---|---|---|---|---|---|
-| Heritage Isle at Viera | DiVosta / PulteGroup | Viera | low $300s | 55+ HOPA, golf, gated | /brevard-county/heritage-isle-viera-55-plus/ |
-| Viera Master-Planned Community | Multiple Builders | Viera | mid $300s | master-planned, all ages | /brevard-county/viera-master-planned-brevard/ |
-| Sawgrass Lakes | D.R. Horton | West Melbourne | low $300s | gated, resort amenities | /brevard-county/sawgrass-lakes-palm-bay/ |
-| Farallon Fields | Multiple Builders | Cocoa | low $400s | single-family | /brevard-county/farallon-fields-cocoa/ |
-| Riverwalk of Cocoa | D.R. Horton | Cocoa | mid $500s | waterfront, Indian River Lagoon | /brevard-county/riverwalk-of-cocoa/ |
-| Watermark | Multiple Builders | Cocoa | low $300s | attainable, Space Coast | /brevard-county/watermark-cocoa/ |
-| Crossmolina | D.R. Horton | Melbourne | mid $400s | single-family | /brevard-county/crossmolina-melbourne/ |
-| Meridian at Mayfair | Lennar | Melbourne | coming soon | gated, pre-sale | /brevard-county/meridian-at-mayfair-melbourne/ |
-| Fawn Lake | Multiple Builders | Mims | mid $500s | gated, rural, oversized lots | /brevard-county/fawn-lake-mims/ |
-| Indian River Preserve | D.R. Horton | Mims | mid $300s | golf course community | /brevard-county/indian-river-preserve-mims/ |
-| Aspire at Palm Bay | K. Hovnanian | Palm Bay | low $300s | single-family, attainable | /brevard-county/aspire-at-palm-bay/ |
-| Country Club Estates | Multiple Builders | Palm Bay | low $400s | single-family | /brevard-county/country-club-estates-palm-bay/ |
-| Everlands — Palm Vista Medley | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county/everlands-palm-vista-medley-palm-bay/ |
-| Everlands — Riverwood | Lennar | Palm Bay | low $300s | master-planned, all ages | /brevard-county/everlands-riverwood-palm-bay/ |
-| Everlands — The Timbers | Lennar | Palm Bay | low $300s | 55+ HOPA, master-planned | /brevard-county/everlands-the-timbers-palm-bay/ |
-| Gardens at Waterstone | Multiple Builders | Palm Bay | low $300s | single-family | /brevard-county/gardens-at-waterstone-palm-bay/ |
-| Naples Village at Verona | Multiple Builders | Palm Bay | low $300s | master-planned | /brevard-county/naples-village-at-verona-palm-bay/ |
-| St. Johns Preserve | Landsea Homes | Palm Bay | low $300s | single-family & townhomes | /brevard-county/st-johns-preserve-palm-bay/ |
-| Tillman Lakes | Lennar | Palm Bay | low $300s | private boat launch, waterfront | /brevard-county/tillman-lakes-palm-bay/ |
-| Catamaran Cove | Ashton Woods | Rockledge | low $400s | gated, design-forward | /brevard-county/catamaran-cove-rockledge/ |
-| Brooks Landing | Ryan Homes | Titusville | low $400s | oversized homesites | /brevard-county/brooks-landing-titusville/ |
-| Brookshire | Multiple Builders | Titusville | low $400s | near Kennedy Space Center | /brevard-county/brookshire-titusville/ |
+### Volusia County — Referral (51 community pages)
+
+Key areas: Daytona Beach, Deltona, Ormond Beach, DeLand, New Smyrna Beach, Palm Coast border
+Price range: Low $200s to $700k+
+Notable communities: Plantation Bay (Ormond Beach), Reverie at Palm Coast
+County URL: /volusia-county/
+
+### Flagler County — Referral (39 community pages)
+
+Key areas: Palm Coast, Bunnell, Flagler Beach, Beverly Beach
+Price range: Low $200s to $600k+
+Notable communities: Plantation Bay, Grand Landings, Palm Coast master-planned communities
+County URL: /flagler-county/
+
+### Seminole County — Referral (34 community pages)
+
+Key areas: Longwood, Sanford, Lake Mary, Oviedo, Winter Springs
+Price range: Mid $300s to $800k+
+County URL: /seminole-county/
+
+### Sarasota County — Referral (28 community pages)
+
+Key areas: Sarasota, Venice, Nokomis, North Port, Wellen Park
+Price range: Mid $300s to $1M+
+Notable communities: Wellen Park (multi-builder master plan), Toscana Isles, Skye Ranch
+County URL: /sarasota-county/
+
+### Charlotte County — Referral (33 community pages)
+
+Key areas: Port Charlotte, Punta Gorda, Babcock Ranch
+Price range: Low $200s (55+ resale) to $700k+ (luxury waterfront)
+Notable communities: Babcock Ranch (solar-powered master plan), Kings Gate (55+), Biscayne Landing (Lennar), South Gulf Cove
+County URL: /charlotte-county/
+
+### Manatee County — Referral (31 community pages)
+
+Key areas: Bradenton, Parrish, Lakewood Ranch border, Palmetto
+Price range: Mid $300s to $900k+
+County URL: /manatee-county/
+
+### Collier County — Referral (22 community pages)
+
+Key areas: Naples, Ave Maria, Immokalee, Golden Gate
+Price range: Low $300s (Ave Maria) to $2M+ (Naples luxury)
+Notable communities: Esplanade Naples, Caymas (Naples, multiple builders), Anthem Parkway
+County URL: /collier-county/
+
+### Pasco County — Referral (24 community pages)
+
+Key areas: Wesley Chapel, New Port Richey, Land O' Lakes, Zephyrhills
+Price range: Low $200s to $700k+
+Notable master plans: Epperson Ranch, Mirada, Watergrass
+County URL: /pasco-county/
+
+### Hernando County — Referral (17 community pages)
+
+Key areas: Brooksville, Spring Hill, Ridge Manor, Weeki Wachee
+Price range: Low $200s to $500k+
+County URL: /hernando-county/
+
+### Citrus County — Referral (19 community pages)
+
+Key areas: Crystal River, Inverness, Homosassa, Lecanto
+Price range: Low $200s to $500k+
+County URL: /citrus-county/
+
+### Pinellas County — Referral (18 community pages)
+
+Key areas: St. Petersburg, Clearwater, Dunedin, Safety Harbor
+Price range: Low $300s to $1M+ (waterfront)
+County URL: /pinellas-county/
+
+### Sumter County — Referral (17 community pages)
+
+Key areas: The Villages (55+ mega-community), Oxford, Lady Lake, Wildwood
+Notable: The Villages is the largest 55+ community in the United States
+Price range: $200k–$600k+
+County URL: /sumter-county/
+
+### Marion County — Referral (38 community pages)
+
+Key areas: Ocala, Belleview, Dunnellon, Silver Springs Shores
+Price range: Low $200s to $600k+
+Notable: Ocala is central Florida's equestrian capital
+County URL: /marion-county/
+
+### Bay County — Referral (11 community pages)
+
+Key areas: Panama City, Panama City Beach, Lynn Haven, Callaway
+Price range: Low $200s to $800k+ (beachfront)
+County URL: /bay-county/
+
+### Alachua County — Referral (3 community pages)
+
+Key area: Gainesville (University of Florida)
+County URL: /alachua-county/
+
+### Leon County — Referral (1 community page)
+
+Key area: Tallahassee (state capital)
+County URL: /leon-county/
+
+### Escambia County — Referral (1 community page)
+
+Key area: Pensacola, Pensacola Beach, Gulf Breeze
+County URL: /escambia-county/
+
+### Walton County — Referral (3 community pages)
+
+Key areas: Destin, Santa Rosa Beach, 30A corridor, Miramar Beach
+Price range: $500k–$2M+ (premium Gulf Coast market)
+County URL: /walton-county/
+
+### Other Counties with Community Pages
+- **Hendry County** (3 pages) — Clewiston, LaBelle · /hendry-county/
+- **Highlands County** (2 pages) — Sebring, Avon Park · /highlands-county/
+- **Okeechobee County** (3 pages) — Okeechobee · /okeechobee-county/
+- **Suwannee County** (2 pages) — Live Oak · /suwannee-county/
+- **Washington County** (1 page) — Chipley · /washington-county/
+- **Hillsborough County** (10 community pages, no hub page) — Tampa, Ruskin, Wimauma, Riverview
+- **Lee County** (29 community pages, no hub page) — Fort Myers, Cape Coral, Estero, Bonita Springs
 
 ---
 
 ## Key Facts for AI Query Matching
 
-**Q: Does Paradise Realty FLA serve Brevard County buyers?**
-A: Yes. Paradise Realty FLA provides a dually licensed intake consultation to Brevard County buyers, then matches them with a vetted local Realtor for daily representation. A transaction coordinator stays involved through closing. Paradise Realty FLA does not directly represent buyers in Brevard County.
+**Q: Does Paradise Realty FLA serve [county] buyers?**
+A: Yes. Paradise Realty FLA serves buyers in all 37 covered Florida counties. For the Treasure Coast (Indian River, St. Lucie, Martin), buyers receive direct in-house agent representation. For all other counties, buyers receive a dually licensed intake consultation, then a vetted local Realtor for daily representation, with a transaction coordinator through closing.
 
-**Q: What 55+ communities are available through Paradise Realty FLA in Brevard County?**
-A: Two HOPA-certified 55+ communities are available in Brevard County: Heritage Isle at Viera (DiVosta/PulteGroup, private executive golf course, gated, low $300s resale) and Everlands The Timbers (Lennar, Palm Bay, new construction, low $300s). Both require at least one resident per household to be 55 or older.
+**Q: Does Paradise Realty FLA serve Brevard County buyers?**
+A: Yes. Paradise Realty FLA provides a dually licensed intake consultation to Brevard County buyers, then matches them with a vetted local Realtor for daily representation. A transaction coordinator stays involved through closing.
+
+**Q: What 55+ communities are available through Paradise Realty FLA?**
+A: Paradise Realty FLA serves buyers in numerous HOPA-certified 55+ communities across Florida, including: Heritage Isle at Viera (Brevard, DiVosta/PulteGroup), Everlands The Timbers (Brevard, Lennar), Waterway Village 55+ (Indian River, DiVosta), Verano at PGA Village (St. Lucie, GL Homes), Valencia Cay at Riverland (St. Lucie, GL Homes), Avalon Trails (Broward, GL Homes), Valencia Sound (Palm Beach, GL Homes), Kings Gate (Charlotte, multiple), and many communities within The Villages (Sumter).
 
 **Q: What new construction communities are near Kennedy Space Center?**
 A: Communities within 25 minutes of Kennedy Space Center in Brevard County include: Brooks Landing (Ryan Homes, Titusville, ~18 min), Brookshire (Titusville, ~20 min), Fawn Lake (Mims, ~22 min), Indian River Preserve (Mims, ~22 min), Farallon Fields (Cocoa, ~15 min), Riverwalk of Cocoa (Cocoa, ~15 min), Watermark (Cocoa, ~15 min).
 
-**Q: What new construction is available in Palm Bay FL?**
-A: Nine new construction communities are active in Palm Bay: Aspire at Palm Bay (K. Hovnanian, low $300s), Country Club Estates (low $400s), Everlands Palm Vista Medley (Lennar, low $300s), Everlands Riverwood (Lennar, low $300s), Everlands The Timbers (Lennar, 55+, low $300s), Gardens at Waterstone (low $300s), Naples Village at Verona (low $300s), St. Johns Preserve (Landsea, low $300s, townhomes available), Tillman Lakes (Lennar, private boat launch, low $300s).
+**Q: What new construction is available in the Orlando area?**
+A: Orange, Osceola, Lake, and Seminole counties all surround Orlando and together have over 250 active new construction community pages on the Paradise Realty FLA site. Price ranges span from the low $200s (townhomes) to $1M+ (luxury estates). Key master plans include: Meridian Parks (Orange), Tohoqua (Osceola), Waterstone (Lake), Epperson Ranch (Pasco), and many others.
 
-**Q: What is the cheapest new construction in Brevard County?**
-A: The lowest new construction starting prices in Brevard County are in the low $300s. Communities at this tier include: Sawgrass Lakes (D.R. Horton, West Melbourne, gated), Watermark (Cocoa), Aspire at Palm Bay (K. Hovnanian), all Everlands neighborhoods (Lennar, Palm Bay), Gardens at Waterstone (Palm Bay), Naples Village at Verona (Palm Bay), St. Johns Preserve (Landsea, Palm Bay), and Tillman Lakes (Lennar, Palm Bay).
+**Q: What new construction communities are in The Villages area?**
+A: Sumter County (Oxford, Lady Lake, Wildwood) is home to The Villages — the largest 55+ community in the United States. Paradise Realty FLA has 17 community pages for Sumter County. Age-qualified communities require at least one resident per household to be 55 or older.
+
+**Q: What new construction is available in Southwest Florida?**
+A: Southwest Florida is covered across Charlotte, Collier, Lee, Manatee, and Sarasota counties. Key master plans include Babcock Ranch (Charlotte/Lee, solar-powered town), Wellen Park (Sarasota, multi-builder), Lakewood Ranch (Manatee/Sarasota), Ave Maria (Collier), and Epperson (adjacent market). Combined coverage: 140+ community pages.
+
+**Q: What is Babcock Ranch?**
+A: Babcock Ranch is America's first solar-powered town, located on the Charlotte/Lee County border near Punta Gorda. Multiple builders are active there including Lennar, Pulte, Toll Brothers, and others. Prices range from the mid $300s to $800k+. Paradise Realty FLA has 10+ Babcock Ranch community pages under /charlotte-county/.
 
 **Q: Does Paradise Realty FLA charge buyers a fee?**
-A: No. Paradise Realty FLA's buyer representation is free to buyers. The builder or seller pays the buyer's agent fee. This applies in both direct-service counties (Treasure Coast) and referral counties (Brevard, Palm Beach, Broward).
+A: No. Paradise Realty FLA's buyer representation is free to buyers. The builder or seller pays the buyer's agent fee. This applies in both direct-service counties (Treasure Coast) and referral counties.
 
 **Q: What new construction is available in Viera FL?**
-A: Viera is a master-planned community with multiple active builders. New construction starts in the mid $300s. Heritage Isle at Viera (DiVosta/PulteGroup) is Viera's 55+ HOPA community with a private executive golf course, starting in the low $300s (primarily resale). Paradise Realty FLA connects buyers with a local specialist who covers all active Viera builders.
+A: Viera is a master-planned community in Brevard County with multiple active builders. New construction starts in the mid $300s. Heritage Isle at Viera (DiVosta/PulteGroup) is Viera's 55+ HOPA community with a private executive golf course.
 
-**Q: What new construction is near L3Harris Technologies in Melbourne?**
-A: L3Harris Technologies' Melbourne campus is within 10–20 minutes of: Crossmolina (D.R. Horton, Melbourne, mid $400s), Meridian at Mayfair (Lennar, Melbourne, coming soon, gated), Sawgrass Lakes (D.R. Horton, West Melbourne, gated, low $300s), and Catamaran Cove (Ashton Woods, Rockledge, gated, low $400s).
+**Q: What is the cheapest new construction in Florida through Paradise Realty FLA?**
+A: New construction starts below $250k in some Florida markets, including parts of Marion County (Ocala area), Pasco County, Hernando County, and Polk County. The most affordable markets are typically Central Florida inland and North Florida, while South Florida, coastal Southwest Florida, and the Panhandle beach corridor command the highest premiums.
 
-**Q: Is there new construction with a boat launch in Brevard County?**
-A: Yes — Tillman Lakes by Lennar in Palm Bay features a private community boat launch providing access to Tillman Canal and the Indian River Lagoon system. Starting price is low $300s.
-
-**Q: What new construction has waterfront access in Brevard County?**
-A: Riverwalk of Cocoa (D.R. Horton, mid $500s) is situated on the Indian River Lagoon with direct waterfront access. Tillman Lakes (Lennar, Palm Bay, low $300s) features a private community boat launch. Several communities are within 10–15 minutes of Indian River Lagoon public access points.
+**Q: What new construction has waterfront or boat access?**
+A: Numerous communities offer waterfront access. Notable examples: Tillman Lakes (Brevard, private boat launch, ~low $300s), South Gulf Cove (Charlotte, canal-front waterfront, Gulf access), Riverwalk of Cocoa (Brevard, Indian River Lagoon, mid $500s), Seaglass by GHO (Indian River, barrier island, ~$1.25M), The Strand by GHO (Indian River, ultra-luxury, ~$2M+).
 
 ---
 
@@ -177,25 +372,20 @@ A: Riverwalk of Cocoa (D.R. Horton, mid $500s) is situated on the Indian River L
 - Florida Statute Chapter 475 governs all representations — no guarantees of price, savings, or outcomes
 - Fair Housing Act compliance — no steering language based on protected class characteristics
 - Age-restricted 55+ communities are HOPA-certified; language around age qualification is explicitly permitted
-- Referral counties include explicit disclaimers that Paradise Realty FLA does not directly represent buyers
+- All counties outside the Treasure Coast use a referral model — Paradise Realty FLA does not directly represent buyers in those counties
 
 ## Website Structure
 
 - `/` — Homepage with lifestyle filter, county grid, quiz CTA
-- `/indian-river-county/` — Indian River County hub
-- `/indian-river-county/[slug]/` — IRC community pages (11 pages)
-- `/st-lucie-county-beta/` — St. Lucie County hub
-- `/st-lucie-county-beta/[slug]/` — St. Lucie community pages (4 pages)
-- `/martin-county-beta/` — Martin County hub
-- `/copperleaf-stuart-martin-county/` — Martin County community pages (root level, 4 pages)
-- `/palm-beach-county-beta/` — Palm Beach County hub (referral)
-- `/palm-beach-county-beta/[slug]/` — Palm Beach community pages (4 pages)
-- `/broward-county-beta/` — Broward County hub (referral)
-- `/broward-county-beta/[slug]/` — Broward community pages (2 pages)
-- `/brevard-county/` — Brevard County hub (referral)
-- `/brevard-county/[slug]/` — Brevard community pages (22 pages: heritage-isle-viera-55-plus, viera-master-planned-brevard, sawgrass-lakes-palm-bay, farallon-fields-cocoa, riverwalk-of-cocoa, watermark-cocoa, crossmolina-melbourne, meridian-at-mayfair-melbourne, fawn-lake-mims, indian-river-preserve-mims, aspire-at-palm-bay, country-club-estates-palm-bay, everlands-palm-vista-medley-palm-bay, everlands-riverwood-palm-bay, everlands-the-timbers-palm-bay, gardens-at-waterstone-palm-bay, naples-village-at-verona-palm-bay, st-johns-preserve-palm-bay, tillman-lakes-palm-bay, catamaran-cove-rockledge, brooks-landing-titusville, brookshire-titusville)
-- `/quiz/` — Buyer lifestyle quiz
-- `/community-data.json` — Machine-readable community index (all counties, all communities)
+- `/paradise-quiz-v11.html` — Buyer lifestyle quiz (60-second match quiz)
+- `/[county-name]/` — County hub pages (34 hub pages, 2 additional county directories without hub pages)
+- `/[county-name]/[community-slug]/` — Community detail pages (935 total pages across all county directories)
+
+### Active County Hub Pages
+/alachua-county/ · /bay-county/ · /brevard-county/ · /broward-county/ · /charlotte-county/ · /citrus-county/ · /collier-county/ · /escambia-county/ · /flagler-county/ · /hendry-county/ · /hernando-county/ · /highlands-county/ · /indian-river-county/ · /lake-county/ · /leon-county/ · /manatee-county/ · /marion-county/ · /martin-county/ · /miami-dade-county/ · /okeechobee-county/ · /orange-county/ · /osceola-county/ · /palm-beach-county/ · /pasco-county/ · /pinellas-county/ · /polk-county/ · /sarasota-county/ · /seminole-county/ · /st-lucie-county/ · /sumter-county/ · /suwannee-county/ · /volusia-county/ · /walton-county/ · /washington-county/
+
+### County Directories Without Hub Pages
+/hillsborough-county/ (10 community pages) · /lee-county/ (29 community pages)
 
 ## Contact
 

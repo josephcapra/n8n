@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Glen Lakes by Richmond American | New Construction Spring Hill Hernando County FL | Paradise Realty FLA</title>
-<meta name="description" content="Glen Lakes by Richmond American Homes in Spring Hill, Hernando County FL. New single-family homes from the mid $400s in an established golf community. Connect with a trusted local specialist through Paradise Realty FLA.">
+<title>Glen Lakes by Richmond American | Spring Hill Hernando</title>
+<meta name="description" content="Glen Lakes by Richmond American Homes in Spring Hill, Hernando County FL. New single-family homes from the mid $400s in an established golf community.">
 <link rel="canonical" href="https://www.paradiserealtyfla.com/hernando-county/glen-lakes-spring-hill/">
-<meta property="og:title" content="Glen Lakes by Richmond American | Spring Hill FL | Paradise Realty FLA">
+<meta property="og:title" content="Glen Lakes by Richmond American | Spring Hill Hernando">
 <meta property="og:description" content="Glen Lakes by Richmond American Homes in Spring Hill FL. New homes from the mid $400s in an established golf community. Local specialist provided.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.paradiserealtyfla.com/hernando-county/glen-lakes-spring-hill/">
@@ -299,5 +299,31 @@ a{color:var(--navy) !important;text-decoration:none}
   <p style="max-width:900px;margin:0 auto;font-size:16px;font-weight:700;color:var(--navy);line-height:1.6;">Protect Your Representation. Builders rarely list every available home on the MLS, and signing in at a model without your agent can cost you the right to representation. Talk to us first — we’ll share the full unpublished inventory and current incentives before you go.</p>
 </div>
 <script>document.querySelectorAll('.faq-q').forEach(q=>{q.addEventListener('click',()=>q.parentElement.classList.toggle('open'))});</script>
+<script>
+(function(){
+  var form=document.querySelector('.contact-form');
+  if(!form)return;
+  form.addEventListener('submit',function(){
+    try{
+      var nm=(document.getElementById('cf-name')||{}).value||'';
+      var parts=nm.trim().split(' ');
+      fetch('https://receivers.leadrouter.realgeeks.com/rest/sites/6b57c97c-3f44-4892-be6d-dc88015e1bfe/leads',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa('paradiserealtyfla:~7GIqG4750DEOq51')},
+        body:JSON.stringify({
+          source:window.location.href,
+          first_name:parts[0]||'',
+          last_name:parts.slice(1).join(' ')||'',
+          email:(document.getElementById('cf-email')||{}).value||'',
+          phone:(document.getElementById('cf-phone')||{}).value||'',
+          notes:(document.getElementById('cf-comment')||{}).value||'',
+          role:'Buyer',
+          activities:[{type:'note',description:'Lead from '+document.title}]
+        })
+      }).catch(function(){});
+    }catch(e){}
+  });
+})();
+</script>
 </body>
 </html>

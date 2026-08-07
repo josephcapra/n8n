@@ -235,6 +235,9 @@ def collect_urls_from_admin(
 
     dupes = len(all_urls) - len(deduped)
     logger.info(f"  Collected {len(deduped):,} unique URLs ({dupes} duplicates removed)")
+    # Apply the permanent deny-list (see sitemap_builder.BLOCKED_PATH_PREFIXES).
+    import sitemap_builder
+    deduped = sitemap_builder._drop_blocked(deduped)
     return deduped
 
 
