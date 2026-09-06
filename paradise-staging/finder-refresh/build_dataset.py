@@ -65,6 +65,11 @@ def main():
         r = {"n": s["nm"], "c": s["cn"], "y": s.get("ct", ""), "u": s["ur"],
              "p": sane(s.get("mn")), "x": sane(s.get("mx")), "l": s.get("lc") or 0, "t": 0, "k": key(s["cn"], s["nm"])}
         if s.get("ty"): r["ty"] = s["ty"]
+        # parity with the old finder cards: beds/baths/sqft/year averages, HOA, price tier, amenity bitmask, builder, new-construction flag
+        for src, dst in (("bd", "bd"), ("ba", "ba"), ("sf", "sf"), ("yr", "yr"), ("hoa", "hoa"), ("pt", "pt"), ("af", "af"), ("sc", "sc")):
+            if s.get(src) not in (None, "", 0): r[dst] = s[src]
+        if s.get("bu"): r["b"] = s["bu"]
+        if s.get("nc"): r["nc"] = 1
         by_key[r["k"]] = r
         records.append(r)
 

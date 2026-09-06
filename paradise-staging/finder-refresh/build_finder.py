@@ -18,6 +18,12 @@ const els = {q: $('search'), county: $('county'), price: $('price'), inc: $('inc
              vid: $('video'), cur: $('curated'), sort: $('sort'), count: $('count'), grid: $('grid'), empty: $('empty'), more: $('more')};
 const PAGE = 48;
 let filtered = [], shown = 0;
+// same amenity bitmask + price tiers as the previous finder, so nothing is lost in the cut-over
+const AMEN = [[0,"Pool"],[1,"Gated"],[2,"Golf"],[3,"Waterfront"],[4,"Boat Access"],[5,"Clubhouse"],[6,"Fitness Center"],[7,"Tennis"],[8,"Pickleball"],[9,"Restaurant"],[10,"55+"],[11,"Playground"],[12,"Park"],[13,"Golf Carts OK"],[14,"Hurricane Shutters"],[15,"Outdoor Kitchen"],[16,"RV Parking"],[17,"Resort-Style"]];
+const TIER = {A:"Attainable", M:"Mid-Range", U:"Upper Mid-Range", L:"Luxury", UL:"Ultra-Luxury"};
+const hasBit = (af, bit) => !!((af || 0) & (1 << bit));
+const lifestyleOn = () => [...document.querySelectorAll('.pill.life.active')].map(p => +p.dataset.bit);
+const typesOn = () => [...document.querySelectorAll('.pill.type.active')].map(p => p.dataset.type.toLowerCase());
 
 for (const c of DATA) c._s = [c.n, c.y, c.b || '', c.c].join(' ').toLowerCase();
 
@@ -36,7 +42,16 @@ function card(c) {
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
   let badges = '';
   if (c.i) badges += `<span class="badge badge-gold" title="${esc(c.i)}">Incentive</span>`;
-  if (curated) badges += '<span class="badge badge-teal">New Construction</span>';
+  badges += curated || c.nc ? '<span class="badge badge-teal">New Construction</span>' : '<span class="badge badge-ghost">Resale</span>';
+  if (c.pt && TIER[c.pt]) badges += `<span class="badge badge-tier">${TIER[c.pt]}</span>`;
+  const stats = (c.bd || c.ba || c.sf || c.hoa) ? `<div class="stats">
+      <div><b>${c.bd ? (+c.bd).toFixed(c.bd % 1 ? 1 : 0) : '—'}</b><span>Beds avg</span></div>
+      <div><b>${c.ba ? (+c.ba).toFixed(c.ba % 1 ? 1 : 0) : '—'}</b><span>Baths avg</span></div>
+      <div><b>${c.sf ? Math.round(c.sf).toLocaleString() : '—'}</b><span>Sq ft avg</span></div>
+      <div><b>${c.hoa ? '$' + Math.round(c.hoa).toLocaleString() : 'None'}</b><span>HOA / mo</span></div></div>` : '';
+  const types = c.ty ? `<div class="types"><strong>Types:</strong> ${esc(c.ty)}${c.yr ? ` · Built ${c.yr}+` : ''}</div>` : '';
+  const am = AMEN.filter(([b]) => hasBit(c.af, b)).map(([, l]) => l);
+  const amen = am.length ? `<div class="amen">${am.slice(0, 6).map(l => `<span>${l}</span>`).join('')}${am.length > 6 ? `<span class="more">+${am.length - 6} more</span>` : ''}</div>` : '';
   if (c.dl) badges += '<span class="badge badge-muted" title="This neighborhood page returns when a home is listed">No active listings right now</span>';
   else if (c.l > 0) badges += `<span class="badge badge-ghost" title="${c.lv ? 'Live count from last nightly check' : 'Listing count'}">${c.l} Listed</span>`;
   const img = c.g  ? `<img src="${esc(c.g)}" alt="${esc(c.n)} community entrance sign" loading="lazy">`
@@ -52,6 +67,7 @@ function card(c) {
       <div class="card-price">${price}</div>
       ${c.b ? `<div class="card-builder">By ${esc(c.b)}</div>` : ''}
       ${badges ? `<div class="card-badges" style="margin-bottom:10px">${badges}</div>` : ''}
+      ${stats}${types}${amen}
       ${desc ? `<p class="card-desc">${esc(desc)}</p>` : ''}
     </div>
     <div class="card-footer">
@@ -77,9 +93,12 @@ function filter() {
   const county = els.county.value, pr = els.price.value, sortBy = els.sort.value;
   const needInc = els.inc.classList.contains('active'), needLst = els.lst.classList.contains('active');
   const needVid = els.vid.classList.contains('active'), needCur = els.cur.classList.contains('active');
+  const bits = lifestyleOn(), types = typesOn();
   let [min, max] = pr ? pr.split('-').map(Number) : [0, 0];
   filtered = DATA.filter(c => {
     if (needCur && c.t !== 1) return false;
+    if (bits.length && !bits.every(b => hasBit(c.af, b))) return false;
+    if (types.length && !types.some(t => (c.ty || '').toLowerCase().includes(t))) return false;
     if (county && c.c !== county) return false;
     if (q && !c._s.includes(q)) return false;
     if (pr) { const p = c.p || 0; if (!p) return false; if (min && p < min) return false; if (max && p > max) return false; }
@@ -106,6 +125,7 @@ let t; els.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(f
 document.querySelector('.search-btn').addEventListener('click', filter);
 ['county', 'price', 'sort'].forEach(k => els[k].addEventListener('change', filter));
 ['inc', 'lst', 'vid', 'cur'].forEach(k => els[k].addEventListener('click', () => { els[k].classList.toggle('active'); filter(); }));
+document.querySelectorAll('.pill').forEach(p => p.addEventListener('click', () => { p.classList.toggle('active'); filter(); }));
 els.more.addEventListener('click', () => renderMore(false));
 
 // in-page video player (YouTube privacy-enhanced embed; nothing loads until a tour is opened)
@@ -166,6 +186,23 @@ def main():
     s = s.replace('<button id="listings" class="filter-toggle">Active Listings</button>',
                   '<button id="listings" class="filter-toggle">Active Listings</button>\n    <button id="video" class="filter-toggle">Has Video Tour</button>\n    <button id="curated" class="filter-toggle">New Construction Only</button>', 1)
     s = s.replace('<option value="name">Sort by Name</option>', '<option value="featured">Featured</option>\n    <option value="name">Sort by Name</option>', 1)
+    life = [(3, "Waterfront"), (4, "Boating"), (2, "Golf"), (10, "Active 55+"), (17, "Resort-Style"), (1, "Gated"), (8, "Pickleball"), (0, "Pool"), (6, "Fitness Center"), (9, "Dining")]
+    types = ["Single Family", "Condo", "Townhouse", "Villa", "Multi-Family", "Mobile", "Land"]
+    pills = ('  <div class="pill-row"><span class="pill-label">Lifestyle</span>' + "".join(f'<button type="button" class="pill life" data-bit="{b}">{l}</button>' for b, l in life) + '</div>\n'
+             '  <div class="pill-row"><span class="pill-label">Home type</span>' + "".join(f'<button type="button" class="pill type" data-type="{t}">{t}</button>' for t in types) + '</div>\n')
+    s = s.replace('<button id="curated" class="filter-toggle">New Construction Only</button>\n  </div>',
+                  '<button id="curated" class="filter-toggle">New Construction Only</button>\n  </div>\n' + pills, 1)
+    s = s.replace("</style>",
+                  ".pill-row{max-width:1280px;margin:0 auto;padding:6px 24px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n"
+                  ".pill-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);margin-right:4px;min-width:74px}\n"
+                  ".pill{border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:999px;padding:6px 12px;font:600 12px Inter,inherit;cursor:pointer}\n"
+                  ".pill.active{background:var(--teal);border-color:var(--teal);color:#fff}\n.filters{padding-bottom:12px}\n"
+                  ".badge-tier{background:var(--teal-light);color:var(--teal-dark)}\n"
+                  ".stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0 10px}\n"
+                  ".stats div{padding:8px 4px;text-align:center;border-left:1px solid var(--border)}\n.stats div:first-child{border-left:0}\n"
+                  ".stats b{display:block;font-size:15px;color:var(--text)}\n.stats span{display:block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-light)}\n"
+                  ".types{font-size:12px;color:var(--text-mid);margin-bottom:8px}\n"
+                  ".amen{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}\n.amen span{font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;color:var(--text-mid);background:var(--cream)}\n.amen .more{color:var(--teal-dark)}\n</style>", 1)
     s = s.replace('<div id="grid" class="grid"></div>',
                   '<div id="grid" class="grid"></div>\n  <button id="more" class="btn btn-outline load-more" hidden>Show more</button>', 1)
     s = s.replace('<footer class="footer">',
@@ -177,6 +214,7 @@ def main():
                   ".card-video-badge{border:0;cursor:pointer;font-family:inherit}\n"
                   ".badge-muted{background:var(--navy-light);color:var(--text-mid)}\n"
                   ".vmodal{position:fixed;inset:0;z-index:1000;background:rgba(10,37,64,.82);display:flex;align-items:center;justify-content:center;padding:16px}\n"
+                  ".vmodal[hidden],[hidden]{display:none!important}\n"
                   ".vbox{width:min(960px,100%);background:#000;border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}\n"
                   ".vbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--navy);color:#fff;font-size:14px;font-weight:600}\n"
                   ".vbar button{background:transparent;border:0;color:#fff;font-size:26px;line-height:1;cursor:pointer;padding:0 4px}\n"
