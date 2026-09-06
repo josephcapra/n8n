@@ -1,0 +1,59 @@
+[
+  {
+    "community": "Apex at Avenir",
+    "builder": "GL Homes",
+    "platform": "youtube",
+    "video_id": "OMfGv59EI7I",
+    "video_title": "Tour the Clubhouse at Apex at Avenir | Florida Luxury Homes",
+    "source_url": "https://www.glhomes.com/apex-at-avenir/lifestyle/",
+    "youtube_url": "https://youtu.be/OMfGv59EI7I",
+    "scraped_at": "2026-09-05T19:45:00",
+    "local_path": "/Users/User/builder-videos/downloads/GL_Homes_Apex_at_Avenir_OMfGv5.mp4",
+    "downloaded": true,
+    "youtube_uploaded": true,
+    "paradise_youtube_id": "xteRgjnmQjI",
+    "paradise_youtube_url": "https://youtu.be/xteRgjnmQjI"
+  },
+  {
+    "community": "Valencia Harbor",
+    "builder": "GL Homes",
+    "platform": "youtube",
+    "video_id": "0qbawi_42bs",
+    "youtube_url": "https://youtu.be/0qbawi_42bs",
+    "source_url": "https://www.glhomes.com/valencia-harbor/",
+    "scraped_at": "2026-09-05T20:24:09.827432",
+    "local_path": "/Users/User/builder-videos/downloads/GL_Homes_Valencia_Harbor_0qbawi.mp4",
+    "downloaded": true,
+    "youtube_uploaded": true,
+    "paradise_youtube_id": "o02PRiYRNkQ",
+    "paradise_youtube_url": "https://youtu.be/o02PRiYRNkQ"
+  },
+  {
+    "community": "Valencia Parc at Riverland",
+    "builder": "GL Homes",
+    "platform": "youtube",
+    "video_id": "zcZtMI8vB24",
+    "youtube_url": "https://youtu.be/zcZtMI8vB24",
+    "source_url": "https://www.glhomes.com/valencia-parc-at-riverland/",
+    "scraped_at": "2026-09-05T20:25:19.209587",
+    "local_path": "/Users/User/builder-videos/downloads/GL_Homes_Valencia_Parc_at_Riverland_zcZtMI.mp4",
+    "downloaded": true,
+    "youtube_uploaded": true,
+    "paradise_youtube_id": "rGH-w1oLdp4",
+    "paradise_youtube_url": "https://youtu.be/rGH-w1oLdp4"
+  },
+  {
+    "community": "Valencia Parc at Riverland",
+    "builder": "GL Homes",
+    "platform": "youtube",
+    "video_id": "uwSRhPDbOfw",
+    "youtube_url": "https://youtu.be/uwSRhPDbOfw",
+    "source_url": "https://www.glhomes.com/valencia-parc-at-riverland/",
+    "scraped_at": "2026-09-05T20:25:19.209593",
+    "local_path": "/Users/User/builder-videos/downloads/GL_Homes_Valencia_Parc_at_Riverland_uwSRhP.mp4",
+    "downloaded": true,
+    "youtube_uploaded": true,
+    "paradise_youtube_id": "0hSuP1FL_yk",
+    "paradise_youtube_url": "https://youtu.be/0hSuP1FL_yk"
+  }
+]
