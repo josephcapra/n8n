@@ -40,7 +40,9 @@ function card(c) {
   const price = !c.p ? 'Contact for Price'
               : (c.x && c.x > c.p) ? `${usd(c.p)} <small>to</small> ${usd(c.x)}`
               : (curated ? `<small>from</small> ${usd(c.p)}` : usd(c.p));
-  const sub = [c.dl ? 'No active listings' : (c.l ? `${c.l.toLocaleString()} listing${c.l === 1 ? '' : 's'}` : ''), c.pt && TIER[c.pt] ? TIER[c.pt] : ''].filter(Boolean).join(' · ');
+  // curated communities without a matched MLS page carry the Sheet's *area-wide* listing count — label it honestly
+  const areaCount = curated && !c.lv;
+  const sub = [c.dl ? 'No active listings' : (c.l ? `${c.l.toLocaleString()} ${areaCount ? 'listings in area' : 'listing' + (c.l === 1 ? '' : 's')}` : ''), c.pt && TIER[c.pt] ? TIER[c.pt] : ''].filter(Boolean).join(' · ');
   const homes = c.h || c.u;
   const view = c.dl ? (c.f || homes) : c.u;   // page currently 404 -> working fallback; the record's URL itself is never changed
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
@@ -57,7 +59,7 @@ function card(c) {
   const am = AMEN.filter(([b]) => hasBit(c.af, b)).map(([, l]) => l);
   const amen = am.length ? `<div class="amen">${am.slice(0, 6).map(l => `<span>${l}</span>`).join('')}${am.length > 6 ? `<span class="more">+${am.length - 6} more</span>` : ''}</div>` : '';
   if (c.dl) badges += '<span class="badge badge-muted" title="This neighborhood page returns when a home is listed">No active listings right now</span>';
-  else if (c.l > 0) badges += `<span class="badge badge-ghost" title="${c.lv ? 'Live count from last nightly check' : 'Listing count'}">${c.l} Listed</span>`;
+  else if (c.l > 0) badges += `<span class="badge badge-ghost" title="${c.lv ? 'Live count from the last refresh' : 'Active listings in the surrounding area'}">${c.l} ${areaCount ? 'in area' : 'Listed'}</span>`;
   const img = c.g  ? `<img src="${esc(c.g)}" alt="${esc(c.n)} community entrance sign" loading="lazy">`
             : c.ph ? `<img src="${esc(c.ph)}?width=880&height=495&aspect_ratio=880:495" alt="Current listing in ${esc(c.n)}: ${esc(c.pa)}" loading="lazy">
                      <a href="${esc(c.pu)}" target="_blank" rel="noopener" class="card-idx-caption" title="Photo is from an active MLS listing and updates automatically">Current listing · ${esc(c.pa)}${c.pp ? ' · ' + fmt(c.pp) : ''}</a>`
