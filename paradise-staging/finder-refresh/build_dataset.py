@@ -59,8 +59,13 @@ def main():
         p = p or 0
         return p if 10_000 <= p <= 100_000_000 else 0
 
-    records, by_key = [], {}
+    records, by_key, by_url = [], {}, {}
     for s in subs:
+        # the MLS file repeats one subdivision per city; one URL = one card (extra areas kept on the card, nothing dropped)
+        if s["ur"] in by_url:
+            prev = by_url[s["ur"]]
+            if s.get("ct") and s["ct"] != prev.get("y") and s["ct"] not in prev.setdefault("ys", []): prev["ys"].append(s["ct"])
+            continue
         # subdivision rows stay minimal; the page derives homes-url and blurb from these fields
         r = {"n": s["nm"], "c": s["cn"], "y": s.get("ct", ""), "u": s["ur"],
              "p": sane(s.get("mn")), "x": sane(s.get("mx")), "l": s.get("lc") or 0, "t": 0, "k": key(s["cn"], s["nm"])}
@@ -70,6 +75,7 @@ def main():
             if s.get(src) not in (None, "", 0): r[dst] = s[src]
         if s.get("bu"): r["b"] = s["bu"]
         if s.get("nc"): r["nc"] = 1
+        by_url[s["ur"]] = r
         by_key[r["k"]] = r
         records.append(r)
 

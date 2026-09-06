@@ -36,7 +36,11 @@ const grad = p => p >= 1e6 ? 'linear-gradient(135deg,#0A2540 0%,#1a4a6e 50%,#0D9
 
 function card(c) {
   const curated = c.t === 1;
-  const price = (!curated && c.x && c.x > c.p) ? `${fmt(c.p)} – ${fmt(c.x)}` : fmt(c.p);
+  const usd = n => '$' + Math.round(n).toLocaleString();
+  const price = !c.p ? 'Contact for Price'
+              : (c.x && c.x > c.p) ? `${usd(c.p)} <small>to</small> ${usd(c.x)}`
+              : (curated ? `<small>from</small> ${usd(c.p)}` : usd(c.p));
+  const sub = [c.dl ? 'No active listings' : (c.l ? `${c.l.toLocaleString()} listing${c.l === 1 ? '' : 's'}` : ''), c.pt && TIER[c.pt] ? TIER[c.pt] : ''].filter(Boolean).join(' · ');
   const homes = c.h || c.u;
   const view = c.dl ? (c.f || homes) : c.u;   // page currently 404 -> working fallback; the record's URL itself is never changed
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
@@ -61,10 +65,11 @@ function card(c) {
   return `<article class="card">
     <div class="card-image">${img}
       ${c.v ? `<button type="button" class="card-video-badge" data-video="${esc(c.v.split('/').pop())}" data-title="${esc(c.n)} — ${esc(c.vs || 'official builder video')}" title="Plays here, no redirect">Watch Tour</button>` : ''}
-      <div class="card-image-overlay"><h3 class="card-name">${esc(c.n)}</h3><div class="card-location">${esc(c.y)}${c.y ? ', ' : ''}${esc(c.c)} County</div></div>
+      <div class="card-image-overlay"><h3 class="card-name">${esc(c.n.replace(/^0\d{3}\s+/, ''))}</h3><div class="card-location">${esc(c.y)}${c.ys && c.ys.length ? ` +${c.ys.length} more area${c.ys.length > 1 ? 's' : ''}` : ''}${c.y ? ', ' : ''}${esc(c.c)} County</div></div>
     </div>
     <div class="card-body">
       <div class="card-price">${price}</div>
+      ${sub ? `<div class="card-sub">${esc(sub)}</div>` : ''}
       ${c.b ? `<div class="card-builder">By ${esc(c.b)}</div>` : ''}
       ${badges ? `<div class="card-badges" style="margin-bottom:10px">${badges}</div>` : ''}
       ${stats}${types}${amen}
@@ -198,6 +203,8 @@ def main():
                   ".pill{border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:999px;padding:6px 12px;font:600 12px Inter,inherit;cursor:pointer}\n"
                   ".pill.active{background:var(--teal);border-color:var(--teal);color:#fff}\n.filters{padding-bottom:12px}\n"
                   ".badge-tier{background:var(--teal-light);color:var(--teal-dark)}\n"
+                  ".card-price{font-size:21px}\n.card-price small{font-size:13px;font-weight:500;color:var(--text-light);margin:0 4px}\n"
+                  ".card-sub{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);margin:-4px 0 10px}\n"
                   ".stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0 10px}\n"
                   ".stats div{padding:8px 4px;text-align:center;border-left:1px solid var(--border)}\n.stats div:first-child{border-left:0}\n"
                   ".stats b{display:block;font-size:15px;color:var(--text)}\n.stats span{display:block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-light)}\n"
@@ -213,6 +220,7 @@ def main():
     s = s.replace("</style>",
                   ".card-video-badge{border:0;cursor:pointer;font-family:inherit}\n"
                   ".badge-muted{background:var(--navy-light);color:var(--text-mid)}\n"
+                  ".card-body .badge-ghost{background:var(--navy-light);color:var(--navy)}\n"
                   ".vmodal{position:fixed;inset:0;z-index:1000;background:rgba(10,37,64,.82);display:flex;align-items:center;justify-content:center;padding:16px}\n"
                   ".vmodal[hidden],[hidden]{display:none!important}\n"
                   ".vbox{width:min(960px,100%);background:#000;border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}\n"
@@ -228,7 +236,8 @@ def main():
     # script: external data + finder logic
     import hashlib
     ver = hashlib.md5(open(DATA_JS, "rb").read()).hexdigest()[:10]  # cache-bust: new data -> new URL
-    s = re.sub(r"<script>\nconst DATA = \{.*?\n</script>", f'<script src="/communities_all.js?v={ver}"></script>\n<script>' + FINDER_JS + '</script>', s, flags=re.S)
+    inject = f'<script src="/communities_all.js?v={ver}"></script>\n<script>' + FINDER_JS + '</script>'
+    s = re.sub(r"<script>\nconst DATA = \{.*?\n</script>", lambda m: inject, s, flags=re.S)  # function form: JS backslashes are not re-interpreted
     open(OUT, "w").write(s)
     print(f"index.html: {os.path.getsize(OUT)//1024} KB | {total:,} communities | {len(video_objects(records))} VideoObject blocks")
 
