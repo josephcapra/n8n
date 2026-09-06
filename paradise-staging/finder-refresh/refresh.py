@@ -19,7 +19,8 @@ import requests
 BUCKET = "paradise-realty-images"
 IN, OUT = "finder/inputs/", "finder/"
 INPUT_FILES = ["all988.json", "best_all.json", "demo31.json", "rg_sign_images.json", "rg_sign_images_all.json",
-               "link_fixes.json", "county_hubs.json", "dead_subdivision_urls.json", "idx_photos.json", "subdivisions_data.js", "template.src.html"]
+               "link_fixes.json", "county_hubs.json", "dead_subdivision_urls.json", "idx_photos.json", "subdivisions_data.js", "template.src.html",
+               "extra_neighborhoods.json", "sitemap_verbatim_urls.json", "incentives_clean.json"]
 UA = {"User-Agent": "Mozilla/5.0 (ParadiseFinderRefresh)"}
 CARD = re.compile(r'href="(/property/[^"]+)".{0,3000}?property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"\s+alt="([^"]*)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
 
@@ -65,7 +66,12 @@ def main():
     pull(bucket)
     subs = json.loads(re.search(r"const DATA\s*=\s*(\[.*?\]);", open(f"{PF}/subdivisions_data.js").read(), re.S).group(1))
     curated = json.load(open(f"{BV}/all988.json"))["communities"]
-    urls = sorted({s["ur"] for s in subs} | {(c.get("paradise_url") or "") for c in curated if (c.get("paradise_url") or "").startswith("http")})
+    extras = json.load(open(f"{BV}/extra_neighborhoods.json")) if os.path.exists(f"{BV}/extra_neighborhoods.json") else []
+    verbatim = json.load(open(f"{BV}/sitemap_verbatim_urls.json")) if os.path.exists(f"{BV}/sitemap_verbatim_urls.json") else {}
+    def extra_url(e):
+        m = re.search(r"/listings/subdivision/([^/?#]*)", e["url"]); return verbatim.get(m.group(1).lower(), e["url"]) if m else e["url"]
+    urls = sorted({s["ur"] for s in subs} | {extra_url(e) for e in extras}
+                  | {(c.get("paradise_url") or "") for c in curated if (c.get("paradise_url") or "").startswith("http")})
     scope = os.environ.get("CRAWL_SCOPE", "all")
     if scope != "all":  # e.g. CRAWL_SCOPE=200 for a smoke test
         urls = urls[: int(scope)]

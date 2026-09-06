@@ -32,6 +32,7 @@ function card(c) {
   const curated = c.t === 1;
   const price = (!curated && c.x && c.x > c.p) ? `${fmt(c.p)} – ${fmt(c.x)}` : fmt(c.p);
   const homes = c.h || c.u;
+  const view = c.dl ? (c.f || homes) : c.u;   // page currently 404 -> working fallback; the record's URL itself is never changed
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
   let badges = '';
   if (c.i) badges += `<span class="badge badge-gold" title="${esc(c.i)}">Incentive</span>`;
@@ -53,7 +54,7 @@ function card(c) {
       ${desc ? `<p class="card-desc">${esc(desc)}</p>` : ''}
     </div>
     <div class="card-footer">
-      <a href="${esc(c.u || homes)}" class="btn btn-primary" target="_blank" rel="noopener">View Community</a>
+      <a href="${esc(view || homes)}" class="btn btn-primary" target="_blank" rel="noopener">View Community</a>
       ${c.l > 0 ? `<a href="${esc(homes)}" class="btn btn-outline" target="_blank" rel="noopener">See Homes</a>` : ''}
     </div>
   </article>`;

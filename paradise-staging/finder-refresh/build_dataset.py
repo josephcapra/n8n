@@ -49,6 +49,12 @@ def main():
         for c in json.load(open(p31))["communities"]:
             if c.get("incentives"): inc_fallback[c["name"]] = c["incentives"][0].get("headline", "")
 
+    # sanitized builder incentives (sanitize_incentives.py): expired dropped, rates redacted, commission/contact removed
+    inc_clean = jload_path = f"{HOME}/builder-videos/incentives_clean.json"
+    inc_clean = json.load(open(jload_path)) if os.path.exists(jload_path) else {}
+    for name, v in inc_clean.items():
+        inc_fallback[name] = v["headline"]
+
     def sane(p):  # MLS feed has placeholder prices like 999,999,999,999
         p = p or 0
         return p if 10_000 <= p <= 100_000_000 else 0
@@ -62,8 +68,29 @@ def main():
         by_key[r["k"]] = r
         records.append(r)
 
+    # resale neighborhoods found in the site's sitemaps but absent from subdivisions_data.js — added, never dropped.
+    # URLs are used exactly as published (see sitemap_verbatim_urls.json); nothing is decoded, re-encoded or normalized.
+    extra_path = f"{HOME}/builder-videos/extra_neighborhoods.json"
+    if os.path.exists(extra_path):
+        verbatim = json.load(open(f"{HOME}/builder-videos/sitemap_verbatim_urls.json")) if os.path.exists(f"{HOME}/builder-videos/sitemap_verbatim_urls.json") else {}
+        n_extra = 0
+        for e in json.load(open(extra_path)):
+            m = re.search(r"/listings/subdivision/([^/?#]*)", e["url"]); slug_key = m.group(1).lower() if m else ""
+            url = verbatim.get(slug_key, e["url"])
+            k = key(e.get("county", ""), e["name"])
+            if url in {r["u"] for r in records} or k in by_key: continue
+            r = {"n": e["name"], "c": e.get("county", ""), "y": e.get("city", ""), "u": url, "p": 0, "x": 0, "l": 0, "t": 0, "k": k, "x_src": 1}
+            if e.get("desc"): r["d"] = e["desc"]
+            records.append(r); by_key[k] = r; n_extra += 1
+        print(f"extra resale neighborhoods from sitemaps: +{n_extra}")
+
+    # some Sheet rows carry an AI refusal instead of a description ("I appreciate your request, but…") — never show those
+    REFUSAL = re.compile(r"^(I appreciate|I've reviewed|I'm unable|I need to|I cannot|I can't|As an AI|Unfortunately, the|The (provided )?content (you|appears)|I don't have)", re.I)
+    def good_text(s): s = (s or "").strip(); return "" if not s or REFUSAL.match(s) else s
+
     enriched = added = 0
     for c in cur:
+        c["description"] = good_text(c.get("description")); c["community_remarks"] = good_text(c.get("community_remarks"))
         k = key(c["county"], c["name"])
         url = LINK_OVERRIDES.get(c["name"]) or c.get("paradise_url") or ""
         if url and not url.startswith("http"): url = "https://www.paradiserealtyfla.com" + url
@@ -98,15 +125,18 @@ def main():
         if r["t"] == 1 and r.get("h", "").startswith("https://www.paradiserealtyfla.com/search/results/?subdivision="):
             r["h"] = search_url(r["n"])
     records = [r for r in records if r["n"].strip().lower() not in ("community name", "") and "Paradise URL" not in (r.get("u") or "")]
-    rerouted = 0
+    # Joe's rule: NEVER alter a community's URL. A page that 404s today keeps its exact URL in `u`;
+    # we only flag it (dl=1) and give the card a working fallback (`f`) until the nightly crawl sees it live again.
+    flagged = 0
     for r in records:
+        r.pop("dl", None); r.pop("f", None)
         if r["t"] == 1 and r["n"] in dead_cur:
-            r["u"] = hubs.get(r["c"]) or search_url(r["n"]); rerouted += 1
+            r["dl"] = 1; r["f"] = hubs.get(r["c"]) or search_url(r["n"]); flagged += 1
         elif r["t"] == 0 and r["u"] in dead_subs:
-            r["u"] = search_url(r["n"]); r["h"] = r["u"]; rerouted += 1
+            r["dl"] = 1; r["f"] = search_url(r["n"]); flagged += 1
         if r.get("v") and r["n"] in dead_vid:
             r.pop("v", None); r.pop("vs", None)
-    print(f"link hygiene: {rerouted} dead links rerouted, {len(dead_vid)} dead videos dropped")
+    print(f"link hygiene: {flagged} pages currently 404 flagged (URLs untouched), {len(dead_vid)} dead videos dropped")
 
     # IDX photo fallback (first active listing on the community page), only where no sign image exists
     idx = jload(f"{HOME}/builder-videos/idx_photos.json", {})
