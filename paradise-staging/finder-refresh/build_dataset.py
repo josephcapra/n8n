@@ -159,7 +159,8 @@ def main():
             if hit.get("price"): r["pp"] = hit["price"]
             n_idx += 1
         # live listing count from the crawl replaces the stale snapshot count; a page that is down has 0 active listings
-        if hit and hit.get("count") is not None: r["l"] = hit["count"]; r["lv"] = 1
+        # live count is only trustworthy on /listings/subdivision/ pages; curated area pages embed county-wide widgets
+        if hit and hit.get("count") is not None and "/listings/subdivision/" in (r.get("u") or ""): r["l"] = hit["count"]; r["lv"] = 1
         if r.get("dl"): r["l"] = 0
     print(f"idx photos attached: {n_idx}")
 
