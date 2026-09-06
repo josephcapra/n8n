@@ -20,7 +20,7 @@ BUCKET = "paradise-realty-images"
 IN, OUT = "finder/inputs/", "finder/"
 INPUT_FILES = ["all988.json", "best_all.json", "demo31.json", "rg_sign_images.json", "rg_sign_images_all.json",
                "link_fixes.json", "county_hubs.json", "dead_subdivision_urls.json", "idx_photos.json", "subdivisions_data.js", "template.src.html",
-               "extra_neighborhoods.json", "sitemap_verbatim_urls.json", "incentives_clean.json"]
+               "extra_neighborhoods.json", "sitemap_verbatim_urls.json", "incentives_clean.json", "community_urls_master.json"]
 UA = {"User-Agent": "Mozilla/5.0 (ParadiseFinderRefresh)"}
 CARD = re.compile(r'href="(/property/[^"]+)".{0,3000}?property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"\s+alt="([^"]*)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
 
@@ -66,23 +66,57 @@ def main():
     pull(bucket)
     subs = json.loads(re.search(r"const DATA\s*=\s*(\[.*?\]);", open(f"{PF}/subdivisions_data.js").read(), re.S).group(1))
     curated = json.load(open(f"{BV}/all988.json"))["communities"]
-    extras = json.load(open(f"{BV}/extra_neighborhoods.json")) if os.path.exists(f"{BV}/extra_neighborhoods.json") else []
-    verbatim = json.load(open(f"{BV}/sitemap_verbatim_urls.json")) if os.path.exists(f"{BV}/sitemap_verbatim_urls.json") else {}
-    def extra_url(e):
-        m = re.search(r"/listings/subdivision/([^/?#]*)", e["url"]); return verbatim.get(m.group(1).lower(), e["url"]) if m else e["url"]
-    urls = sorted({s["ur"] for s in subs} | {extra_url(e) for e in extras}
-                  | {(c.get("paradise_url") or "") for c in curated if (c.get("paradise_url") or "").startswith("http")})
+    # The permanent URL registry is the crawl universe: every community URL ever seen, verbatim, append-only.
+    # Pages come and go with IDX listings, so a URL that is dead today is still checked every run.
+    reg_path = f"{BV}/community_urls_master.json"
+    reg = json.load(open(reg_path)) if os.path.exists(reg_path) else {}
+    today = time.strftime("%Y-%m-%d")
+    def reg_add(u, src, **meta):
+        if not u or not u.startswith("http"): return
+        e = reg.setdefault(u, {"url": u, "slug": (re.search(r"/listings/subdivision/([^/?#]*)", u) or [None, ""])[1].lower() if "/listings/subdivision/" in u else "",
+                               "sources": [], "first_seen": today, "last_checked": "", "last_live": "", "name": "", "county": "", "city": ""})
+        if src not in e["sources"]: e["sources"].append(src)
+        for k, v in meta.items():
+            if v and not e.get(k): e[k] = v
+    for s in subs: reg_add(s["ur"], "subdivisions_data.js", name=s["nm"], county=s["cn"], city=s.get("ct", ""))
+    for c in curated:
+        u = c.get("paradise_url") or ""
+        if u and not u.startswith("http"): u = "https://www.paradiserealtyfla.com" + u
+        if (c.get("name") or "").strip().lower() != "community name": reg_add(u, "sheet-communities", name=c.get("name", ""), county=c.get("county", ""), city=c.get("city", ""))
+    urls = sorted(reg.keys())
     scope = os.environ.get("CRAWL_SCOPE", "all")
     if scope != "all":  # e.g. CRAWL_SCOPE=200 for a smoke test
         urls = urls[: int(scope)]
-    log(f"crawling {len(urls)} pages")
+    log(f"crawling {len(urls)} pages from the registry ({len(reg)} URLs total)")
     dead, idx = crawl(urls)
     log(f"crawl done: dead={len(dead)} photos={len(idx)}")
+    dead_set = {u for u, _ in dead}
+    for u in urls:
+        e = reg[u]; e["last_checked"] = today
+        if u not in dead_set: e["last_live"] = today
+        if u in idx and idx[u].get("address") and not e.get("city"): e["city"] = idx[u]["address"].rsplit(",", 1)[-1].strip()
+    json.dump(reg, open(reg_path, "w"))
     if scope == "all":
         json.dump(dead, open(f"{BV}/dead_subdivision_urls.json", "w"))
         json.dump(idx, open(f"{BV}/idx_photos.json", "w"))
     else:  # smoke test: merge into the prior full results instead of replacing them
         prev = json.load(open(f"{BV}/idx_photos.json")); prev.update(idx); json.dump(prev, open(f"{BV}/idx_photos.json", "w"))
+    # neighborhoods that are live but absent from subdivisions_data.js become finder records (never removed once added)
+    known = {s["ur"] for s in subs}
+    from collections import Counter
+    c2c = {}
+    for s in subs:
+        if s.get("ct") and s.get("cn"): c2c.setdefault(s["ct"].strip().lower(), Counter())[s["cn"]] += 1
+    extras = []
+    for u, e in reg.items():
+        if u in known or "/listings/subdivision/" not in u or "sheet-communities" in e["sources"]: continue
+        if not e.get("last_live"): continue
+        import urllib.parse
+        name = e.get("name") or re.sub(r"\s+", " ", urllib.parse.unquote(e["slug"]).replace("-", " ")).strip(" -:*'\"").title()
+        county = e.get("county") or (c2c[e["city"].strip().lower()].most_common(1)[0][0] if e.get("city") and e["city"].strip().lower() in c2c else "")
+        extras.append({"url": u, "name": name, "city": e.get("city", ""), "county": county, "desc": ""})
+    json.dump(extras, open(f"{BV}/extra_neighborhoods.json", "w"))
+    log(f"registry: {len(reg)} URLs; live-but-not-in-base neighborhoods carried as records: {len(extras)}")
 
     import build_dataset, build_finder
     build_finder.SRC = f"{BV}/template.src.html"
@@ -94,8 +128,10 @@ def main():
         if remote.endswith(".gz"): b.content_encoding = "gzip"; b.content_type = "application/javascript"
         b.cache_control = "public, max-age=300"
         b.upload_from_filename(local)
-    for f in ("dead_subdivision_urls.json", "idx_photos.json"):
+    for f in ("dead_subdivision_urls.json", "idx_photos.json", "extra_neighborhoods.json", "community_urls_master.json"):
         bucket.blob(IN + f).upload_from_filename(f"{BV}/{f}")
+    # dated, immutable copy of the registry in the backups bucket — the URLs are the constant asset
+    client.bucket("paradise-realty-backups").blob(f"finder/community_urls_master-{today}.json").upload_from_filename(reg_path)
     stats = json.load(open(f"{ST}/communities_all.stats.json")); stats["refreshed"] = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     bucket.blob(OUT + "stats.json").upload_from_string(json.dumps(stats, indent=1), content_type="application/json")
     log("published:", json.dumps(stats))
