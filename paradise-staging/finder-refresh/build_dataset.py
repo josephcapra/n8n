@@ -143,10 +143,13 @@ def main():
     n_idx = 0
     for r in records:
         hit = idx.get(r["u"]) or idx.get(r.get("h", ""))
-        if hit and not r.get("g"):
+        if hit and hit.get("photo") and not r.get("g"):
             r["ph"] = hit["photo"]; r["pa"] = hit["address"]; r["pu"] = hit["listing_url"]
             if hit.get("price"): r["pp"] = hit["price"]
             n_idx += 1
+        # live listing count from the crawl replaces the stale snapshot count; a page that is down has 0 active listings
+        if hit and hit.get("count") is not None: r["l"] = hit["count"]; r["lv"] = 1
+        if r.get("dl"): r["l"] = 0
     print(f"idx photos attached: {n_idx}")
 
     records.sort(key=lambda r: (-r["t"], r["n"].lower()))

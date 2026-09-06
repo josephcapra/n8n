@@ -37,7 +37,8 @@ function card(c) {
   let badges = '';
   if (c.i) badges += `<span class="badge badge-gold" title="${esc(c.i)}">Incentive</span>`;
   if (curated) badges += '<span class="badge badge-teal">New Construction</span>';
-  if (c.l > 0) badges += `<span class="badge badge-ghost">${c.l} Listed</span>`;
+  if (c.dl) badges += '<span class="badge badge-muted" title="This neighborhood page returns when a home is listed">No active listings right now</span>';
+  else if (c.l > 0) badges += `<span class="badge badge-ghost" title="${c.lv ? 'Live count from last nightly check' : 'Listing count'}">${c.l} Listed</span>`;
   const img = c.g  ? `<img src="${esc(c.g)}" alt="${esc(c.n)} community entrance sign" loading="lazy">`
             : c.ph ? `<img src="${esc(c.ph)}?width=880&height=495&aspect_ratio=880:495" alt="Current listing in ${esc(c.n)}: ${esc(c.pa)}" loading="lazy">
                      <a href="${esc(c.pu)}" target="_blank" rel="noopener" class="card-idx-caption" title="Photo is from an active MLS listing and updates automatically">Current listing · ${esc(c.pa)}${c.pp ? ' · ' + fmt(c.pp) : ''}</a>`
@@ -54,8 +55,8 @@ function card(c) {
       ${desc ? `<p class="card-desc">${esc(desc)}</p>` : ''}
     </div>
     <div class="card-footer">
-      <a href="${esc(view || homes)}" class="btn btn-primary" target="_blank" rel="noopener">View Community</a>
-      ${c.l > 0 ? `<a href="${esc(homes)}" class="btn btn-outline" target="_blank" rel="noopener">See Homes</a>` : ''}
+      <a href="${esc(view || homes)}" class="btn btn-primary" target="_blank" rel="noopener">${c.dl ? 'See Nearby Homes' : 'View Community'}</a>
+      ${!c.dl && c.l > 0 ? `<a href="${esc(homes)}" class="btn btn-outline" target="_blank" rel="noopener">See Homes</a>` : ''}
     </div>
   </article>`;
 }
@@ -174,6 +175,7 @@ def main():
                   '  </div>\n</div>\n<footer class="footer">', 1)
     s = s.replace("</style>",
                   ".card-video-badge{border:0;cursor:pointer;font-family:inherit}\n"
+                  ".badge-muted{background:var(--navy-light);color:var(--text-mid)}\n"
                   ".vmodal{position:fixed;inset:0;z-index:1000;background:rgba(10,37,64,.82);display:flex;align-items:center;justify-content:center;padding:16px}\n"
                   ".vbox{width:min(960px,100%);background:#000;border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}\n"
                   ".vbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--navy);color:#fff;font-size:14px;font-weight:600}\n"

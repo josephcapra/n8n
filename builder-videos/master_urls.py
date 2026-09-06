@@ -23,9 +23,12 @@ for c in json.load(open(f"{BV}/all988.json"))["communities"]:
     if u and not u.startswith("http"): u = "https://www.paradiserealtyfla.com" + u
     if c.get("name", "").strip().lower() != "community name": add(u, "sheet-communities", name=c["name"], county=c["county"], city=c.get("city", ""))
 dead = {u for u, _ in json.load(open(f"{BV}/dead_subdivision_urls.json"))}
+verified_live = {e["url"] for e in json.load(open(f"{BV}/extra_neighborhoods.json"))}   # HEAD-checked 200 today
 for u, e in reg.items():
     if u in dead: e["last_checked"] = today
-    elif "subdivisions_data.js" in e["sources"] or any(x["url"] == u for x in []): e["last_checked"] = e["last_checked"] or today; e["last_live"] = e["last_live"] or today
+    elif "subdivisions_data.js" in e["sources"] or u in verified_live:
+        e["last_checked"] = e["last_checked"] or today; e["last_live"] = e["last_live"] or today
+    if u in verified_live: e["finder_record"] = True   # once a neighborhood is a finder record it stays one
 json.dump(reg, open(REG, "w"), indent=0)
 from collections import Counter
 print(f"registry: {len(reg):,} URLs (append-only) | by source: {Counter(s for e in reg.values() for s in e['sources'])}")

@@ -53,11 +53,17 @@ def crawl(urls):
             if code != 200:
                 dead.append([u, str(code)]); continue
             i = html.find("Newest Listings")
-            m = CARD.search(html[i:] if i >= 0 else html)
+            seg = html[i:] if i >= 0 else html
+            m = CARD.search(seg)
+            # live listing count: prefer an explicit "N Homes/Properties/Listings for Sale" total, else count listing cards
+            tot = re.search(r"(\d[\d,]*)\s+(?:Homes?|Properties|Listings|Results)\s+(?:for Sale|Found|Available)", html, re.I)
+            count = int(tot.group(1).replace(",", "")) if tot else len(re.findall(r'href="/property/[^"]+"', seg))
             if m:
                 idx[u] = {"photo": f"https://property-images.realgeeks.com/{m.group(2)}", "address": m.group(3),
                           "listing_url": "https://www.paradiserealtyfla.com" + m.group(1),
-                          "price": int(m.group(5).replace(",", "")) if m.group(5) else 0, "checked": time.strftime("%Y-%m-%d")}
+                          "price": int(m.group(5).replace(",", "")) if m.group(5) else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
+            elif count:
+                idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
             if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)}  {int(time.time()-t0)}s")
     return dead, idx
 
@@ -107,16 +113,22 @@ def main():
     c2c = {}
     for s in subs:
         if s.get("ct") and s.get("cn"): c2c.setdefault(s["ct"].strip().lower(), Counter())[s["cn"]] += 1
-    extras = []
+    # NEVER SHRINK: every neighborhood that has ever been a finder record stays one (flagged while its page is down).
+    prev_path = f"{BV}/extra_neighborhoods.json"
+    extras = {e["url"]: e for e in (json.load(open(prev_path)) if os.path.exists(prev_path) else [])}
+    for u in extras: reg.setdefault(u, {"url": u, "slug": "", "sources": ["extras"], "first_seen": today, "last_checked": "", "last_live": "", "name": "", "county": "", "city": ""})["finder_record"] = True
+    import urllib.parse
     for u, e in reg.items():
-        if u in known or "/listings/subdivision/" not in u or "sheet-communities" in e["sources"]: continue
-        if not e.get("last_live"): continue
-        import urllib.parse
-        name = e.get("name") or re.sub(r"\s+", " ", urllib.parse.unquote(e["slug"]).replace("-", " ")).strip(" -:*'\"").title()
+        if u in known or u in extras or "/listings/subdivision/" not in u or "sheet-communities" in e["sources"]: continue
+        if not (e.get("last_live") or e.get("finder_record")): continue
+        name = e.get("name") or re.sub(r"\s+", " ", urllib.parse.unquote(e.get("slug", "")).replace("-", " ")).strip(" -:*'\"").title()
         county = e.get("county") or (c2c[e["city"].strip().lower()].most_common(1)[0][0] if e.get("city") and e["city"].strip().lower() in c2c else "")
-        extras.append({"url": u, "name": name, "city": e.get("city", ""), "county": county, "desc": ""})
-    json.dump(extras, open(f"{BV}/extra_neighborhoods.json", "w"))
-    log(f"registry: {len(reg)} URLs; live-but-not-in-base neighborhoods carried as records: {len(extras)}")
+        extras[u] = {"url": u, "name": name, "city": e.get("city", ""), "county": county, "desc": ""}; e["finder_record"] = True
+    for u, x in extras.items():   # fill county later if the crawl learned the city
+        if not x.get("county") and reg.get(u, {}).get("city") and reg[u]["city"].strip().lower() in c2c:
+            x["county"] = c2c[reg[u]["city"].strip().lower()].most_common(1)[0][0]
+    json.dump(list(extras.values()), open(prev_path, "w")); json.dump(reg, open(reg_path, "w"))
+    log(f"registry: {len(reg)} URLs; neighborhoods carried as finder records beyond the base file: {len(extras)} (never fewer than last run)")
 
     import build_dataset, build_finder
     build_finder.SRC = f"{BV}/template.src.html"
