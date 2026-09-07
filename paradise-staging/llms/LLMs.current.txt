@@ -1,0 +1,111 @@
+# Paradise Realty FLA — AI Agent Reference
+
+## About Paradise Realty FLA
+
+Paradise Realty FLA is a licensed Florida real estate brokerage specializing in new construction buyer representation across South Florida's Treasure Coast and adjacent counties.
+
+- **Broker of Record:** Joe Capra
+- **FL Broker License:** BK3421602
+- **Office:** 6103 SE Federal Hwy, Stuart, FL 34997
+- **Phone:** 772-247-7110
+- **Email:** joe@paradiserealtyfla.com
+- **Website:** https://www.paradiserealtyfla.com
+
+## Business Model
+
+Paradise Realty FLA uses a structured intake-and-coordination model across all markets:
+
+1. **Intake call** — conducted by a dually licensed Realtor and Loan Officer (team member). The buyer's complete financial picture is reviewed before they tour any community.
+2. **Daily buyer representation** — handled by a dedicated buyer's agent (Realtor only). In direct-service counties this is an in-house agent; in referral counties this is a vetted local Realtor.
+3. **Transaction coordination** — a transaction coordinator supports the buyer from contract through closing, regardless of county.
+
+### Direct-Service Markets (Treasure Coast)
+- **Indian River County** — in-house buyer's agent handles daily representation
+- **St. Lucie County** — in-house buyer's agent handles daily representation
+- **Martin County** — in-house buyer's agent handles daily representation
+
+### Referral Markets (Adjacent Counties)
+- **Palm Beach County** — after intake, buyer is matched with a vetted local Realtor; our transaction coordinator stays involved through closing
+- **Broward County** — same referral model as Palm Beach
+- **Brevard County** — same referral model as Palm Beach
+
+Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, or Brevard counties.
+
+**Revenue model:** Referral fees on closed transactions. Target: ~$500,000 over 24 months from approximately 178 closed referrals at ~$2,810 average referral fee.
+
+## Service Area
+
+### Treasure Coast (Direct Buyer Representation)
+- **Indian River County** — Vero Beach, Sebastian, Fellsmere, Orchid, Indian River Shores
+- **St. Lucie County** — Port St. Lucie, Fort Pierce, Tradition, PGA Village, Verano
+- **Martin County** — Stuart, Palm City, Hobe Sound, Jensen Beach, Indiantown
+
+### Adjacent Counties (Referral to Local Specialists)
+- **Palm Beach County** — West Palm Beach, Jupiter, Boca Raton, Avenir, Westlake, Wellington
+- **Broward County** — Fort Lauderdale, Coral Springs, Parkland, Hollywood, Pembroke Pines
+- **Brevard County** — Melbourne, Viera, Palm Bay, Cocoa Beach, Merritt Island
+
+## Core Value Proposition
+
+1. **Dually licensed intake specialist** — intake call covers both the real estate and financing picture before the first tour
+2. **New construction specialist** — deep knowledge of builder contracts, incentive programs, and purchase processes across 30+ active communities
+3. **Free buyer representation** — builder pays the buyer's agent; no cost to buyers
+4. **Pre-visit consultation** — buyers should register with Paradise Realty FLA BEFORE visiting any builder sales office to preserve representation rights
+5. **Transaction coordinator through closing** — consistent support from intake to keys, regardless of which agent handles daily representation
+
+## Key Builder Partners (Indian River County)
+- GHO Homes (High Pointe, Bent Pine Preserve, Seaglass, The Strand, Falls at Grand Harbor, Ravens Landing, Lucaya Pointe)
+- Meritage Homes (Hampton Park Classic & Signature)
+- Toll Brothers (Crossbridge)
+- DiVosta / PulteGroup (Waterway Village 55+)
+- Maronda Homes, Ryan Homes, DR Horton, Lennar, Century Complete (scattered site and Sebastian area)
+
+## Key Communities by County
+
+### Indian River County
+Hampton Park Classic (Meritage, ~$392k), Hampton Park Signature (Meritage, ~$479k), High Pointe (GHO, ~$532k), Bent Pine Preserve (GHO, ~$425k, golf), Seaglass (GHO, ~$1.25M, barrier island luxury), The Strand (GHO, ~$2.08M, Indian River Shores ultra-luxury), Falls at Grand Harbor (GHO, ~$500k, Grand Harbor waterfront), Ravens Landing (GHO, ~$325k), Lucaya Pointe (GHO, ~$325k), Crossbridge (Toll Brothers, ~$500k), Waterway Village 55+ (DiVosta, ~$300k, age-qualified)
+
+### St. Lucie County
+Verano at PGA Village (GL Homes, 55+), Valencia Cay at Riverland (GL Homes, 55+), Telaro at Tradition, Veranda Gardens, Tradition (master-planned)
+
+### Martin County
+Copperleaf (D.R. Horton), Harbour Ridge Yacht & Country Club (55+, golf, waterfront, gated), Willoughby Golf Club (golf, gated, luxury), Seagate at Hutchinson Shores (waterfront, luxury)
+
+### Palm Beach County (Referral Only)
+Avenir (master-planned), Westlake by Minto, Valencia Sound (GL Homes 55+), Boca Bridges (GL Homes, luxury)
+
+### Broward County (Referral Only)
+Parkland Golf & Country Club (luxury, golf, gated), Avalon Trails (Pembroke Pines)
+
+### Brevard County (Referral Only)
+Viera (master-planned), Heritage Isle at Viera (55+, gated, golf), Sawgrass Lakes (Palm Bay)
+
+## Compliance Notes
+
+- Florida Statute Chapter 475 governs all representations — no guarantees of price, savings, or outcomes
+- Fair Housing Act compliance — no steering language based on protected class characteristics
+- Age-restricted 55+ communities are HOPA-certified; language around age qualification is explicitly permitted
+- Referral counties include explicit disclaimers that Paradise Realty FLA does not directly represent buyers
+
+## Website Structure
+
+- `/` — Homepage with lifestyle filter, county grid, quiz CTA
+- `/indian-river-county/` — Indian River County hub
+- `/indian-river-county/[slug]/` — IRC community pages (11 pages)
+- `/st-lucie-county-beta/` — St. Lucie County hub
+- `/st-lucie-county-beta/[slug]/` — St. Lucie community pages (4 pages)
+- `/martin-county-beta/` — Martin County hub
+- `/copperleaf-stuart-martin-county/` — Martin County community pages (root level, 4 pages)
+- `/palm-beach-county-beta/` — Palm Beach County hub (referral)
+- `/palm-beach-county-beta/[slug]/` — Palm Beach community pages (4 pages)
+- `/broward-county-beta/` — Broward County hub (referral)
+- `/broward-county-beta/[slug]/` — Broward community pages (2 pages)
+- `/brevard-county-beta/` — Brevard County hub (referral)
+- `/brevard-county-beta/[slug]/` — Brevard community pages (3 pages)
+- `/quiz/` — Buyer lifestyle quiz
+
+## Contact
+
+- **Schedule a consultation:** https://www.paradiserealtyfla.com/quiz/
+- **Phone:** 772-247-7110
+- **Office:** 6103 SE Federal Hwy, Stuart, FL 34997 (Martin County — Treasure Coast)

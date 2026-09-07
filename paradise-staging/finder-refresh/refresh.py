@@ -194,9 +194,18 @@ def main():
     # public incentives page, built from the FINISHED dataset so it can never disagree with the cards.
     # Self-clearing: no unexpired offers -> empty state here and no nav link on the finder.
     log(f"incentives page: {build_incentives_page.main()} live offer(s)")
+    # llms.txt: counts are derived from the same dataset, so it can never quote a stale community total
+    try:
+        os.environ.setdefault("LLMS_DATA", f"{ST}/communities_all.js")
+        os.environ.setdefault("LLMS_CURRENT", "LLMs.current.txt")
+        os.environ.setdefault("LLMS_OUT", f"{ST}/llms.txt")
+        import make_llms  # noqa: F401  (module writes on import)
+        log("llms.txt regenerated")
+    except Exception as e:
+        log(f"llms.txt: skipped ({e}); keeping the published copy")
 
     for local, remote in ((f"{ST}/communities_all.js.gz", "communities_all.js.gz"), (f"{ST}/index.html", "index.html"),
-                          (f"{ST}/incentives.html", "incentives.html"),
+                          (f"{ST}/incentives.html", "incentives.html"), (f"{ST}/llms.txt", "llms.txt"),
                           (f"{ST}/communities_all.stats.json", "stats.json")):
         b = bucket.blob(OUT + remote)
         if remote.endswith(".gz"): b.content_encoding = "gzip"; b.content_type = "application/javascript"

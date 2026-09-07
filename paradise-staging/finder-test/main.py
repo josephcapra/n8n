@@ -61,6 +61,39 @@ def data():
 def stats():
     return Response(gcs_bytes("stats.json", "communities_all.stats.json"), mimetype="application/json", headers={"Cache-Control": "no-cache"})
 
+SITE = "https://search.paradiserealtyfla.com"
+
+@app.route("/robots.txt")
+def robots():
+    """The test host stays out of the index entirely; the public host advertises its sitemap.
+    Community area pages live on www and are covered by the sitemaps Joe submits for that host."""
+    if request.host.startswith("paradise-finder-test"):
+        body = "User-agent: *\nDisallow: /\n"
+    else:
+        body = f"User-agent: *\nAllow: /\n\nSitemap: {SITE}/sitemap.xml\n"
+    return Response(body, mimetype="text/plain", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    """Only the two pages this host actually serves. The 41k community URLs are www URLs and belong
+    in the www sitemaps — listing them here would be a cross-host sitemap for pages we do not own."""
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    urls = [(f"{SITE}/", "daily", "1.0"), (f"{SITE}/incentives", "daily", "0.9")]
+    body = "".join(f"  <url><loc>{u}</loc><lastmod>{today}</lastmod>"
+                   f"<changefreq>{c}</changefreq><priority>{p}</priority></url>\n" for u, c, p in urls)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + body + "</urlset>\n")
+    return Response(xml, mimetype="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.route("/llms.txt")
+def llms():
+    """Served from GCS so the twice-daily job can keep its counts current without a redeploy."""
+    return Response(gcs_bytes("llms.txt", "llms.txt"), mimetype="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.route("/health")
 def health():
     return {"status": "ok", "service": "paradise-finder-test"}

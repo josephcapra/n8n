@@ -1,0 +1,127 @@
+# Paradise Realty FLA — AI Agent Reference
+_Updated 2026-09-07. Community counts below come from the nightly-refreshed Community Finder dataset._
+
+## About Paradise Realty FLA
+
+Paradise Realty FLA is a licensed Florida real estate brokerage specializing in new construction buyer representation across South Florida's Treasure Coast and adjacent counties.
+
+- **Broker of Record:** Joe Capra
+- **FL Broker License:** BK3421602
+- **Office:** 6103 SE Federal Hwy, Stuart, FL 34997
+- **Phone:** 772-247-7110
+- **Email:** joe@paradiserealtyfla.com
+- **Website:** https://www.paradiserealtyfla.com
+
+## Business Model
+
+Paradise Realty FLA uses a structured intake-and-coordination model across all markets:
+
+1. **Intake call** — conducted by a dually licensed Realtor and Loan Officer (team member). The buyer's complete financial picture is reviewed before they tour any community.
+2. **Daily buyer representation** — handled by a dedicated buyer's agent (Realtor only). In direct-service counties this is an in-house agent; in referral counties this is a vetted local Realtor.
+3. **Transaction coordination** — a transaction coordinator supports the buyer from contract through closing, regardless of county.
+
+### Direct-Service Markets (Treasure Coast)
+- **Indian River County** — in-house buyer's agent handles daily representation
+- **St. Lucie County** — in-house buyer's agent handles daily representation
+- **Martin County** — in-house buyer's agent handles daily representation
+
+### Referral Markets (Adjacent Counties)
+- **Palm Beach County** — after intake, buyer is matched with a vetted local Realtor; our transaction coordinator stays involved through closing
+- **Broward County** — same referral model as Palm Beach
+- **Brevard County** — same referral model as Palm Beach
+
+Paradise Realty FLA does not directly represent buyers in Palm Beach, Broward, or Brevard counties.
+
+**Revenue model:** Referral fees on closed transactions. Target: ~$500,000 over 24 months from approximately 178 closed referrals at ~$2,810 average referral fee.
+
+## Service Area
+
+### Treasure Coast (Direct Buyer Representation)
+- **Indian River County** — Vero Beach, Sebastian, Fellsmere, Orchid, Indian River Shores
+- **St. Lucie County** — Port St. Lucie, Fort Pierce, Tradition, PGA Village, Verano
+- **Martin County** — Stuart, Palm City, Hobe Sound, Jensen Beach, Indiantown
+
+### Adjacent Counties (Referral to Local Specialists)
+- **Palm Beach County** — West Palm Beach, Jupiter, Boca Raton, Avenir, Westlake, Wellington
+- **Broward County** — Fort Lauderdale, Coral Springs, Parkland, Hollywood, Pembroke Pines
+- **Brevard County** — Melbourne, Viera, Palm Bay, Cocoa Beach, Merritt Island
+
+## Core Value Proposition
+
+1. **Dually licensed intake specialist** — intake call covers both the real estate and financing picture before the first tour
+2. **New construction specialist** — deep knowledge of builder contracts, incentive programs, and purchase processes across 30+ active communities
+3. **Free buyer representation** — builder pays the buyer's agent; no cost to buyers
+4. **Pre-visit consultation** — buyers should register with Paradise Realty FLA BEFORE visiting any builder sales office to preserve representation rights
+5. **Transaction coordinator through closing** — consistent support from intake to keys, regardless of which agent handles daily representation
+
+## Community Finder (authoritative community data)
+
+- **41,078 Florida communities** across **67 counties**: 965 curated **new construction** communities (builder, price-from, description, incentives, official builder video, entrance sign) plus 40,113 **resale neighborhoods** from the MLS.
+- 226 communities carry an **official builder video tour** (builder's own YouTube channel only; no third-party or agent videos).
+- 636 communities carry a **community entrance sign photo**; 28155 show the photo of a **current active listing** (refreshed nightly; removed automatically when the listing sells).
+- **Builder incentives** are published only while unexpired; exact mortgage rates are never quoted — the phrase used is "Builder promotional interest rates may be offered". 5 communities currently show an incentive.
+- Data is refreshed **twice daily (3:30 AM and 3:30 PM ET)** from a permanent registry of every community URL. URLs are stable and never rewritten; a neighborhood page that has no active listing today is flagged rather than removed and returns automatically when a home is listed.
+- Community Finder: https://search.paradiserealtyfla.com/ — searchable directory of every community below.
+- Current builder incentives: https://search.paradiserealtyfla.com/incentives — every community running an unexpired builder offer, with the date it runs through. Rebuilt twice daily; offers disappear the day they expire.
+
+## New Construction Communities by County (curated)
+
+- **Lake County** (95): The Wellness Ridge - Chateau (Lennar) from $504K, The Wellness Ridge - Estates (Lennar) from $550K, Wellness Ridge Estates (Dream Finders Homes) from $542K, Waterstone Townhomes (Taylor Morrison) from $355K, Lochside (Taylor Morrison) from $555K, Eden Crest (Lennar) from $369K, Waterstone (Groveland) (Lennar) from $380K, Pine Meadows Reserve (Trinity Family Buildiers) from $367K
+- **Orange County** (74): Crossroads at Kelly Park (Dream Finders Homes) from $454K, Bronson Peak - Seville Collection (Toll Brothers) from $652K, Bronson Peak - Valencia Collection (Toll Brothers) from $622K, Westhaven at Ovation - Retreat Collection (Toll Brothers) from $770K, Wynwood (DR Horton) from $415K, Esplanade at McKinnon Groves (Taylor Morrison) from $646K, Westhaven at Ovation - Bungalows Collection (Toll Brothers) from $594K, Harvest at Ovation (Taylor Morrison) from $618K
+- **Palm Beach County** (72): Coral Isles at Avenir (GL Homes) from $1389K, Regency at Avenir (Toll Brothers) from $1399K, Solana Bay at Avenir (Lennar) from $1449K, APEX at Avenir (Kolter Homes) from $1217K, L'Ambiance at Avenir (Kolter Homes) from $1449K, Avondale at Avenir (Toll Brothers) from $1439K, Westlake Communities (Multiple Builders) from $825K, Sky Cove South (Minto Communities) from $812K
+- **Osceola County** (66): Center Lake On The Park (M/I Homes) from $571K, The Meadow at Crossprairie (Meritage Homes) from $446K, The Meadow at Crossprairie Bungalows (Meritage Homes) from $390K, The Meadow at Crossprairie Townes (Meritage Homes) from $347K, Palmeras at Crossprairie - The Grove Collection (David Weekley Homes) from $528K, Palmeras at Crossprairie - The Magnolia Collection (David Weekley Homes) from $420K, Palmeras at Crossprairie - The Palms Collection (David Weekley Homes) from $352K, Tohoqua - Estates Collection (Lennar) from $399K
+- **St. Lucie County** (53): Central Park at Tradition (Multiple Builders) from $485K, Central Park Townhomes (DR Horton) from $354K, Brystol Wylder from $487K, Cadence at Tradition from $504K, Tesoro from $1550K, Del Webb at Tradition (Del Webb (Pulte)) from $551K, Lakewood Park from $359K, Waterstone (Multiple Builders) from $375K
+- **Brevard County** (52): Windward Preserve (Taylor Morrison) from $580K, Harbor Square (Pulte Homes) from $289K, Sunrise Estates (Pulte Homes) from $436K, Del Webb at Viera (Del Webb) from $424K, Malabar Springs (Maronda Homes) from $401K, Addison Village (D.R. Horton), Aspire at Palm Bay (K. Hovnanian) from $406K, Aspire at Treasure Coast (K. Hovnanian® Homes) from $356K
+- **Volusia County** (50): Crossings at Grand Reserve (D.R. Horton) from $306K, Archers Mill (Lennar) from $341K, Campbell Crossing (DR Horton) from $356K, Cresswind DeLand 55+ Community (Kolter Homes) from $485K, Delaney Reserve (DR Horton) from $550K, Ridgehaven (Meritage Homes) from $477K, Ridgehaven - Reserve Series (Meritage Homes) from $510K, Ridgehaven - Villas (Meritage Homes) from $314K
+- **Flagler County** (39): Sawmill Creek (Dream Finders Homes) from $341K, Colbert Landings (Taylor Morrison) from $358K, Flagler Village - Classic Series (Meritage Homes) from $319K, Plantation Bay (ICI Homes) from $1084K, Enclave at Seminole Palms (Maronda Homes) from $372K, Matanzas Cove (SeaGate Homes) from $387K, Toscana (ABD Development) from $912K, Flagler Village (D.R. Horton) from $297K
+- **Marion County** (38): Marion Oaks (Century Complete) from $324K, Rainbow Lakes Estates (Century Complete) from $245K, Silver Springs Shores (Maronda Homes) from $281K, On Top of the World (On Top of the World) from $432K, Marion County Spot Lots (DR Horton) from $319K, Cherrywood Preserve (Casa Fresca Homes) from $284K, Bennah Oaks (Century Complete) from $289K, Pioneer Ranch 50s (Lennar) from $332K
+- **Seminole County** (34): Townes at Northlake (K. Hovnanian® Homes) from $519K, Aulin Square (Beazer Homes) from $478K, Emerald Pointe (Pulte Homes) from $360K, Emerald Pointe at Beryl Landing (DR Horton) from $353K, Estates at Rivercrest (M/I Homes) from $401K, Preserve at Deer Lakes (Beazer Homes) from $1312K, Hawk's Overlook (M/I Homes) from $1005K, Riverside Oaks - Estates Collection (Toll Brothers) from $739K
+- **Charlotte County** (33): Turnleaf (M/I Homes) from $392K, Turnleaf 50' (Perry Homes) from $599K, Babcock Ranch (Babcock Ranch) from $557K, Coral Lakes - Tradition & Express (D.R. Horton) from $350K, Turnleaf 60' (Perry Homes) from $687K, Esplanade at Starling (Taylor Morrison) from $492K, Creekside Run at Babcock Ranch (Dream Finders Homes) from $524K, Palmetto Landing at Babcock Ranch Express (D.R. Horton) from $349K
+- **Manatee County** (31): Oakfield Lakes (Centex) from $344K, North River Ranch (Multiple Builders) from $498K, Calusa Country Club (Lennar) from $758K, Oakfield Trails (Pulte Homes) from $454K, Soleil at North River Ranch (Mattamy Homes) from $314K, Longmeadow at North River Ranch (Pulte Homes) from $818K, Lorraine Lakes (Lennar) from $359K, Esplanade at Azario Lakewood Ranch (Taylor Morrison) from $773K
+- **Indian River County** (31): Vero Lake Estates from $390K, Vero Lake Estates (Maronda) (Maronda Homes) from $343K, Hampton Park (Meritage Homes) from $539K, Costa Pointe from $578K, High Pointe from $641K, Lucaya Pointe from $858K, Bent Pine (Various Builders) from $815K, Bent Pine Preserve from $807K
+- **Lee County** (29): Solena (Taylor Morrison) from $343K, Whispering Lakes (Centex Homes) from $318K, Mirror Lakes (LGI Homes) from $347K, Asher Park (D.R. Horton) from $321K, Avalon (D.R. Horton) from $279K, Bentley Crossing (D.R. Horton) from $340K, Bonavie Cove (Mattamy Homes) from $405K, Bonita Del Sol (Pulte Homes) from $665K
+- **Sarasota County** (28): Stoneybrook Golf & Country Club (Various Builders) from $599K, Esplanade at Wellen Park (Taylor Morrison) from $392K, Skye Ranch (Taylor Morrison) from $497K, Sunstone at Wellen Park (Mattamy Homes) from $699K, Brightmore at Wellen Park (Mattamy Homes) from $500K, Waterside at Lakewood Ranch (Neal Communities) from $509K, Grand Palm (Neal Communities) from $649K, Lakespur at Wellen Park (Multiple Builders) from $546K
+- **Martin County** (26): Newfield (Mattamy Homes) from $759K, Avila from $430K, The Landings from $2495K, Sailfish Cay (DR Horton) from $432K, Preserve at Park Trace from $719K, Salerno Reserve from $539K, Terra Lago from $442K, Cove Royale from $849K
+- **Polk County** (26): Hawthorne Ranch (Highland Homes) from $375K, Harmony On Lake Eloise (Multiple Builders) from $292K, Hamilton Bluff (Lennar) from $299K, Noah Estates at Tuscany Preserve (LGI Homes) from $268K, Ranches at Lake McLeod (Lennar) from $330K, Wynnstone (Multiple Builders) from $360K, Providence (Multiple Builders) from $494K, Ridgewood Lakes (Various Builders) from $291K
+- **Pasco County** (24): Two Rivers (Multiple Builders) from $589K, Mirada (Lennar) from $342K, Mirada (Active Adult) (Lennar) from $359K, Epperson Ranch (D.R. Horton) from $409K, Epperson North (Metro Development Group) from $469K, Timbergrove (Lennar) from $344K, Esplanade at Wiregrass Ranch (Taylor Morrison) from $493K, Acacia Fields (Lennar) from $344K
+- **Collier County** (22): Ave Maria (Ave Maria Development) from $577K, Maple Ridge at Ave Maria (CC Homes) from $504K, Del Webb Naples (Del Webb) from $587K, Arboretum (Mattamy Homes) from $605K, Avalon Park at Ave Maria (Pulte Homes) from $559K, Caymas (Pulte Homes) from $964K, Encore at Naples Square (The Ronto Group) from $4797K, Esplanade at Kingston (Taylor Morrison) from $425K
+- **Hillsborough County** (21): Touchstone (Ryan Homes) from $309K, Ayersworth Glen (Lennar) from $359K, Berry Bay (DR Horton) from $550K, Carlton Lakes (D.R. Horton) from $484K, Cypress Creek (Various Builders) from $349K, Epperson (Multiple Builders) from $424K, Evergreen (Pulte Homes) from $441K, FishHawk Ranch Towncenter (Various Builders) from $480K
+- **Broward County** (19): Entourage in the Sun from $1870K, Coral Key Villas from $5679K, Be Hillsboro from $840K, Salato from $4122K, Avalon Trails (GL Homes) from $446K, Monterra (GL Homes) from $620K, Nautica (Various Builders) from $899K, Finesse 4
+- **Citrus County** (19): Citrus Springs (Holiday Builders) from $280K, Citrus Springs (Holiday Builders) (Holiday Builders) from $311K, Sugarmill Woods (Lytton Enterprises) from $385K, Inverness Custom Homes (Lytton Enterprises) from $273K, Inverness (Maronda Homes) from $287K, Lecanto Custom Homes (Rise Construction Co.) from $359K, Citrus Hills - Clearview Estates (Various Builders) from $684K, Pine Ridge Estates (Norman Adams Home Builders) from $489K
+- **Pinellas County** (18): 400 Central (Red Apple Real Estate) from $1895K, The Residences at 400 Central (Red Apple Real Estate) from $1895K, Reflection St. Pete (Property Markets Group) from $1499K, Townes at Island Lake (DR Horton) from $389K, Belleair Beach New Construction (Multiple Builders) from $6197K, Snell Isle Shores (Multiple Builders) from $475K, Feather Sound (Various Builders) from $380K, Bayway Isles (Various Builders) from $1795K
+- **Hernando County** (17): Caldera (Pulte Homes) from $359K, Caldera (Homes by WestBay) (Homes by WestBay) from $639K, Trilby Crossing (Lennar) from $320K, Sherman Hills (D.R. Horton), Autumn Lakes (Various Builders) from $612K, Cypress Village (Various Builders) from $5000K, Glen Lakes (Richmond American Homes) from $482K, Hernando County Spot Lots (Pulte Homes) from $326K
+- **Sumter County** (17): The Villages (Sumter portion) (The Villages of Lake Sumter) from $398K, Sumter Villas (Multiple Builders) from $300K, Wildwood Highland Homes (Highland Homes) from $400K, Bushnell New Construction (Multiple Builders) from $274K, CenterState at The Villages (Various Builders), Del Webb at Wildwood (Pulte Homes) from $450K, Lake Panasoffkee New Construction (Multiple Builders) from $380K, Middleton (Wildwood) (Multiple Builders) from $365K
+- **Bay County** (11): Breakfast Point East (Fischer Homes) from $627K, Breakwater at Ward Creek - Coastal Collection (Toll Brothers) from $499K, Breakwater at Ward Creek - Oasis Collection (Toll Brothers) from $566K, Breakwater at Ward Creek - Vista Collection (Toll Brothers) from $745K, Coral Cove (Fischer Homes) from $379K, Grand Oaks of Callaway (Century Complete) from $425K, Latitude Margaritaville Watersound (Minto Communities) from $1074K, Pine Hills (Century Complete) from $289K
+- **Alachua County** (3): Briarwood (Maronda Homes) from $356K, Oakhaven Walk (Maronda Homes) from $428K, Oakmont (ICI Homes) from $939K
+- **Hendry County** (3): Caloosa Cove (Centex Homes) from $326K, Labelle (Maronda Homes) from $307K, Liberty Shores (LGI Homes) from $427K
+- **Okeechobee County** (3): Mallard Landing (Holiday Builders) from $312K, Taylor Creek Isles (Various Builders) from $397K, The Reserve at Okeechobee (Various Builders)
+- **Walton County** (3): NatureWalk at Watersound Origins (Kolter Homes) from $776K, Nautilus Pointe (Brock Built) from $959K, The Enclave at Cat Island Estates (Century Complete) from $272K
+- **Suwannee County** (2): Retreat at Town Center - Reef Collection (Toll Brothers) from $438K, Retreat at Town Center - Villa Collection (Toll Brothers) from $373K
+- **Highlands County** (2): Sun 'N Lake (Century Complete) from $273K, Sun 'N Lake Signature (Century Complete) from $273K
+- **Miami-Dade County** (1): Palm Coast (Estela Living)
+- **Escambia County** (1): Seminole Bend (Maronda Homes) from $408K
+- **Washington County** (1): Sunny Hills (Century Complete) from $210K
+- **Leon County** (1): The Collection at Four Oaks (Traton Homes) from $398K
+
+## Website Structure
+
+- `/` — Homepage
+- `/communities/` — Florida Community Finder (all communities, filters by county, price, incentive, video, new construction)
+- `/<county>-county/` — County hub pages (66 counties)
+- `/<county>-county/<community-slug>/` — New construction community pages
+- `/listings/subdivision/<Subdivision-Slug>/` — Resale neighborhood pages with live MLS listings; filter variants live beneath each (e.g. `/Condos-for-Sale/`, `/home-values/`)
+- `/search/results/?subdivision=<name>` — Live listing search for any community
+- `/blog/` — Market insights
+
+## Compliance Notes
+
+- Florida Statute Chapter 475 governs all representations — no guarantees of price, savings, or outcomes
+- Fair Housing Act compliance — no steering language based on protected class characteristics
+- Age-restricted 55+ communities are HOPA-certified; language around age qualification is explicitly permitted
+- Referral counties include explicit disclaimers that Paradise Realty FLA does not directly represent buyers
+
+## Contact
+
+- **Schedule a consultation:** https://www.paradiserealtyfla.com/quiz/
+- **Phone:** 772-247-7110
+- **Office:** 6103 SE Federal Hwy, Stuart, FL 34997 (Martin County — Treasure Coast)
