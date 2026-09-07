@@ -1,0 +1,65 @@
+{
+ "add": [
+  [
+   "Artistry",
+   "https://www.paradiserealtyfla.com/palm-beach-county/artistry-palm-beach-gardens/"
+  ],
+  [
+   "Astor Creek Golf & Country Club",
+   "https://www.paradiserealtyfla.com/st-lucie-county/astor-creek-tradition/"
+  ],
+  [
+   "Central Park Townhomes",
+   "https://www.paradiserealtyfla.com/st-lucie-county/central-park-tradition/"
+  ],
+  [
+   "Costa Pointe",
+   "https://www.paradiserealtyfla.com/indian-river-county/costa-pointe-vero-beach/"
+  ],
+  [
+   "Hampton Park",
+   "https://www.paradiserealtyfla.com/indian-river-county/hampton-park-vero-beach/"
+  ],
+  [
+   "L'Ambiance at Avenir",
+   "https://www.paradiserealtyfla.com/palm-beach-county/lambiance-avenir-palm-beach-gardens/"
+  ],
+  [
+   "Mosaic",
+   "https://www.paradiserealtyfla.com/volusia-county/mosaic-daytona-beach/"
+  ],
+  [
+   "Rivella",
+   "https://www.paradiserealtyfla.com/st-lucie-county/rivella-port-saint-lucie/"
+  ],
+  [
+   "Salerno Reserve",
+   "https://www.paradiserealtyfla.com/martin-county/salerno-reserve-stuart/"
+  ],
+  [
+   "Solana Bay at Avenir",
+   "https://www.paradiserealtyfla.com/palm-beach-county/solana-bay-avenir-palm-beach-gardens/"
+  ],
+  [
+   "Terra Lago",
+   "https://www.paradiserealtyfla.com/martin-county/terra-lago-indiantown/"
+  ],
+  [
+   "Tidewater",
+   "https://www.paradiserealtyfla.com/st-lucie-county/tidewater-fort-pierce/"
+  ],
+  [
+   "Valencia at Riverland",
+   "https://www.paradiserealtyfla.com/st-lucie-county/valencia-riverland-port-saint-lucie/"
+  ]
+ ],
+ "update": [],
+ "remove": [],
+ "nochange": [],
+ "unreachable": [
+  [
+   "Cresswind Palm Beach at Westlake",
+   "name does not match its page URL (alba-west-palm-beach) - verify before publishing"
+  ]
+ ]
+}
