@@ -47,7 +47,12 @@ function card(c) {
   const view = c.dl ? (c.f || homes) : c.u;   // page currently 404 -> working fallback; the record's URL itself is never changed
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
   let badges = '';
-  if (c.i) badges += `<span class="badge badge-gold" title="${esc(c.i)}">Incentive</span>`;
+  if (c.i) badges += '<span class="badge badge-gold">Builder incentive</span>';
+  const inc = c.i ? `<div class="inc">
+      <div class="inc-head">Builder incentive${c.ix ? ` <span class="inc-thru">through ${new Date(c.ix + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'})}</span>` : ''}</div>
+      <p class="inc-text">${esc(c.i)}</p>
+      <p class="inc-note">Set by ${esc(c.ib || 'the builder')} and subject to change without notice.</p>
+    </div>` : '';
   badges += curated || c.nc ? '<span class="badge badge-teal">New Construction</span>' : '<span class="badge badge-ghost">Resale</span>';
   if (c.pt && TIER[c.pt]) badges += `<span class="badge badge-tier">${TIER[c.pt]}</span>`;
   const stats = (c.bd || c.ba || c.sf || c.hoa) ? `<div class="stats">
@@ -75,7 +80,7 @@ function card(c) {
       ${sub ? `<div class="card-sub">${esc(sub)}</div>` : ''}
       ${c.b ? `<div class="card-builder">By ${esc(c.b)}</div>` : ''}
       ${badges ? `<div class="card-badges" style="margin-bottom:10px">${badges}</div>` : ''}
-      ${stats}${types}${amen}
+      ${inc}${stats}${types}${amen}
       ${desc ? `<p class="card-desc">${esc(desc)}</p>` : ''}
     </div>
     <div class="card-footer">
@@ -236,6 +241,11 @@ def main():
                   ".pill{border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:999px;padding:6px 12px;font:600 12px Inter,inherit;cursor:pointer}\n"
                   ".pill.active{background:var(--teal);border-color:var(--teal);color:#fff}\n.filters{padding-bottom:12px}\n"
                   ".badge-tier{background:var(--teal-light);color:var(--teal-dark)}\n"
+                  ".inc{border:1px solid var(--gold);background:var(--gold-light);border-radius:8px;padding:10px 12px;margin:0 0 10px}\n"
+                  ".inc-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a6d1f;margin-bottom:5px}\n"
+                  ".inc-thru{font-weight:600;letter-spacing:.02em;text-transform:none;color:var(--text-mid)}\n"
+                  ".inc-text{font-size:13px;line-height:1.5;color:var(--text);margin:0 0 6px}\n"
+                  ".inc-note{font-size:10.5px;line-height:1.45;color:var(--text-mid);margin:0}\n"
                   ".card-price{font-size:21px}\n.card-price small{font-size:13px;font-weight:500;color:var(--text-light);margin:0 4px}\n"
                   ".card-sub{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);margin:-4px 0 10px}\n"
                   ".stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0 10px}\n"
@@ -297,6 +307,15 @@ def main():
                   ".sb-clear:hover{border-color:var(--teal);color:var(--teal-dark)}\n"
                   "@media (max-width:900px){.layout{display:block;padding:14px 16px 0}.sidebar{position:static;width:auto;max-height:none;flex:none;margin-bottom:16px;padding:12px}\n"
                   ".sb-toggle{display:block}.sb-body{display:none;padding-top:14px}.sidebar.open .sb-body{display:block}}\n</style>", 1)
+    s = s.replace('<div class="footer-bottom">',
+                  '<div class="footer-note"><strong>About builder incentives:</strong> incentives shown are provided by the builder, '
+                  'are current as of the date displayed, and may change or end without notice. Terms, eligibility, and availability vary by '
+                  'community and by home, and may require the use of a preferred lender or title company. Nothing here is an offer, a guarantee '
+                  'of savings, or a commitment to lend. Confirm current details with Paradise Realty FLA before relying on them. '
+                  'Register with us before visiting a builder sales office to preserve your right to representation.</div>\n'
+                  '  <div class="footer-bottom">', 1)
+    s = s.replace("</style>", ".footer-note{max-width:1280px;margin:28px auto 0;padding:16px 24px 0;border-top:1px solid rgba(255,255,255,.14);"
+                              "font-size:12px;line-height:1.6;color:rgba(255,255,255,.72)}\n.footer-note strong{color:rgba(255,255,255,.9)}\n</style>", 1)
     s = s.replace('<footer class="footer">',
                   '<div id="vmodal" class="vmodal" hidden role="dialog" aria-modal="true" aria-labelledby="vtitle">\n'
                   '  <div class="vbox">\n    <div class="vbar"><span id="vtitle"></span><button id="vclose" type="button" aria-label="Close video">&times;</button></div>\n'

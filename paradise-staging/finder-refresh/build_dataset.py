@@ -50,7 +50,7 @@ def main():
             if c.get("incentives"): inc_fallback[c["name"]] = c["incentives"][0].get("headline", "")
 
     # sanitized builder incentives (sanitize_incentives.py): expired dropped, rates redacted, commission/contact removed
-    inc_clean = jload_path = f"{HOME}/builder-videos/incentives_clean.json"
+    jload_path = f"{HOME}/builder-videos/incentives_clean.json"
     inc_clean = json.load(open(jload_path)) if os.path.exists(jload_path) else {}
     for name, v in inc_clean.items():
         inc_fallback[name] = v["headline"]
@@ -113,6 +113,9 @@ def main():
                  "h": f"https://www.paradiserealtyfla.com/search/results/?subdivision={c['name']}",
                  "b": c.get("builder", ""), "p": c.get("price_from") or 0, "l": c.get("active_listings") or 0,
                  "d": c.get("description") or (c.get("community_remarks") or "")[:220], "t": 1, "i": inc, "k": k}
+        rec = inc_clean.get(c["name"])
+        if inc and rec:                                   # expiry + source builder travel with the offer
+            patch["ix"] = rec.get("expires", ""); patch["ib"] = rec.get("builder", "")
         if v: patch["v"] = v["youtube_url"]; patch["vs"] = v["channel"]
         if g: patch["g"] = g
         if k in by_key:
@@ -155,14 +158,20 @@ def main():
     n_idx = 0
     for r in records:
         hit = idx.get(r["u"]) or idx.get(r.get("h", ""))
-        if hit and hit.get("photo") and not r.get("g"):
+        # attach the listing photo whenever one exists — the card decides priority (listing photo first, then sign)
+        if hit and hit.get("photo"):
             r["ph"] = hit["photo"]; r["pa"] = hit["address"]; r["pu"] = hit["listing_url"]
             if hit.get("price"): r["pp"] = hit["price"]
             n_idx += 1
         # live listing count from the crawl replaces the stale snapshot count; a page that is down has 0 active listings
-        # live count is only trustworthy on /listings/subdivision/ pages; curated area pages embed county-wide widgets
-        if hit and hit.get("count") is not None and "/listings/subdivision/" in (r.get("u") or ""): r["l"] = hit["count"]; r["lv"] = 1
-        if r.get("dl"): r["l"] = 0
+        # Only ever show a count we counted on the community's own page this crawl. The Sheet's area-wide
+        # number produced cards saying "212 listings" that opened to "No current listings" — never again.
+        if hit and hit.get("count") is not None:
+            r["l"] = hit["count"]; r["lv"] = 1
+            if hit["count"] == 0: r["nl"] = 1          # page loads, has nothing listed today
+        else:
+            r.pop("l", None)                            # unverified: say nothing rather than something wrong
+        if r.get("dl"): r.pop("l", None); r["nl"] = 1
     print(f"idx photos attached: {n_idx}")
 
     records.sort(key=lambda r: (-r["t"], r["n"].lower()))

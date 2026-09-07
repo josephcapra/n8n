@@ -25,6 +25,13 @@ UA = {"User-Agent": "Mozilla/5.0 (ParadiseFinderRefresh)"}
 CARD = re.compile(r'href="(/property/[^"]+)".{0,3000}?property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"\s+alt="([^"]*)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
 # lenient fallback for area pages whose listing widgets are laid out differently: photo first, nearest listing link after it
 LOOSE = re.compile(r'property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"[^>]*?alt="([^"]*)".{0,4000}?href="(/property/[^"]+)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
+IMG_TAG = re.compile(r'<img\b[^>]*>', re.I)
+SRC = re.compile(r'\bsrc="(https://property-images\.realgeeks\.com/[a-z]+/[a-f0-9]+\.jpg)[^"]*"', re.I)
+ALT = re.compile(r'\balt="([^"]*)"', re.I)
+LINK = re.compile(r'href="(/property/[^"#?]+)"')
+PRICE = re.compile(r'\$([\d,]{5,})')
+EMPTY = re.compile(r"No current listings|no listings (?:were )?found|check back later", re.I)
+
 def _norm(m):
     """Return (listing_path, photo_path, address, price_str) from either regex."""
     g = m.groups()
@@ -83,20 +90,24 @@ def crawl(urls, prev_dead=frozenset(), prev_idx=None):
                 elif u in prev_idx: idx[u] = prev_idx[u]
                 continue
             live.add(u)   # only a real 200 counts as live
-            i = html.find("Newest Listings")
-            seg = html[i:] if i >= 0 else html
-            m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
-            # count ONLY the listing links this community actually shows. An area page can embed a county-wide
-            # widget whose total ("212") has nothing to do with the community — that mismatch is user-visible.
-            if re.search(r"No current listings|no listings (?:were )?found|check back later", html, re.I):
-                count, m = 0, None
+            i = html.find("Newest Listings"); seg = html[i:] if i >= 0 else html
+            if EMPTY.search(html):
+                count, photo, alt, lp, price = 0, None, None, None, 0
             else:
-                count = len(set(re.findall(r'href="(/property/[^"]+)"', seg)))
-            if m and count:
-                lp, pp, addr, pr = _norm(m)
-                idx[u] = {"photo": f"https://property-images.realgeeks.com/{pp}", "address": addr,
-                          "listing_url": "https://www.paradiserealtyfla.com" + lp,
-                          "price": int(pr.replace(",", "")) if pr else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
+                links = list(dict.fromkeys(LINK.findall(seg))); count = len(links)
+                photo = alt = None
+                for tag in IMG_TAG.findall(seg):
+                    s = SRC.search(tag)
+                    if s:
+                        photo = s.group(1); a = ALT.search(tag); alt = a.group(1) if a else ""; break
+                lp = links[0] if links else None
+                price = 0
+                if photo:
+                    j = seg.find(photo); mp = PRICE.search(seg, max(0, j - 4000), j + 4000) or PRICE.search(seg)
+                    if mp: price = int(mp.group(1).replace(",", ""))
+            if photo and count:
+                idx[u] = {"photo": photo, "address": alt or "", "listing_url": "https://www.paradiserealtyfla.com" + (lp or ""),
+                          "price": price, "count": count, "checked": time.strftime("%Y-%m-%d")}
             else:
                 idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
             if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)} unknown={unknown}  {int(time.time()-t0)}s")
@@ -166,6 +177,16 @@ def main():
             x["county"] = c2c[reg[u]["city"].strip().lower()].most_common(1)[0][0]
     json.dump(list(extras.values()), open(prev_path, "w")); json.dump(reg, open(reg_path, "w"))
     log(f"registry: {len(reg)} URLs; neighborhoods carried as finder records beyond the base file: {len(extras)} (never fewer than last run)")
+
+    # builder incentives straight from the sheet every run: expired dropped, rates redacted, contacts stripped
+    try:
+        import incentives
+        pub, rev = incentives.build(curated, out_dir=BV)
+        log(f"incentives: {len(pub)} publishable | expired {len(rev['expired'])} | no end date {len(rev['no_end_date'])} | unmatched {len(rev['unmatched'])}")
+        bucket.blob(IN + "incentives_clean.json").upload_from_filename(f"{BV}/incentives_clean.json")
+        bucket.blob(OUT + "reports/incentives_review.json").upload_from_filename(f"{BV}/incentives_review.json")
+    except Exception as e:
+        log(f"incentives: sheet refresh failed ({e}); keeping the previous published set")
 
     import build_dataset, build_finder
     build_finder.SRC = f"{BV}/template.src.html"
