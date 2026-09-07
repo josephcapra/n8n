@@ -302,7 +302,6 @@ def main():
 <header class="header"><div class="header-inner">
   <a href="https://www.paradiserealtyfla.com" class="logo">{logo_tag()}<span class="logo-text">Paradise Realty <span>FLA</span></span></a>
   <div class="header-cta">
-    <a href="{attr(PHONE_HREF)}" class="header-phone">{esc(PHONE)}</a>
   </div>
 </div></header>
 
