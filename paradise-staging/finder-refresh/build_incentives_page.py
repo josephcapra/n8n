@@ -12,7 +12,7 @@ nothing has to be taken down by hand at the end of a month.
 Output: ~/paradise-staging/finder-test/incentives.html  (published to GCS by refresh.py, served at /incentives)
 """
 import datetime, gzip, html, json, os, re
-import site_footer
+import site_footer, site_chrome
 
 HOME = os.path.expanduser("~")
 BV = f"{HOME}/builder-videos"
@@ -296,13 +296,13 @@ def main():
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
 <style>{CSS}{site_footer.CSS}</style>
 {ld}
+{site_chrome.GA4_HEAD}
 </head>
 <body>
 <header class="header"><div class="header-inner">
   <a href="https://www.paradiserealtyfla.com" class="logo">{logo_tag()}<span class="logo-text">Paradise Realty <span>FLA</span></span></a>
   <div class="header-cta">
     <a href="{attr(PHONE_HREF)}" class="header-phone">{esc(PHONE)}</a>
-    <a href="{attr(CONTACT)}" class="btn-consult">Free Consultation</a>
   </div>
 </div></header>
 
@@ -330,6 +330,7 @@ def main():
 <section class="faq"><h2>Questions buyers ask about builder incentives</h2>{faq_html}</section>
 
 {site_footer.html()}
+{site_chrome.CHROME}
 </body>
 </html>'''
     open(OUT, "w").write(page)

@@ -6,7 +6,7 @@ Input : scratchpad/community-finder-demo.src.html (theme + layout source of trut
 Output: ~/paradise-staging/finder-test/index.html
 """
 import json, os, re
-import site_footer
+import site_footer, site_chrome
 
 HOME = os.path.expanduser("~")
 SRC = "/private/tmp/claude-501/-Users-User/ed61b43f-3353-4c6d-9ca3-6f8aac402470/scratchpad/community-finder-demo.src.html"
@@ -350,6 +350,14 @@ def main():
     # reads as the same company. Replaces the finder's own three-column footer entirely.
     s = re.sub(r'<footer class="footer">.*?</footer>', lambda m: site_footer.html(), s, flags=re.S)
     s = s.replace("</style>", site_footer.CSS + "\n</style>", 1)
+
+    # Joe: the header "Free Consultation" button did not work - remove it. The floating consultation
+    # pill from site_chrome covers the same job and is the one the rest of the site uses.
+    s = re.sub(r'\s*<a href="[^"]*" class="btn-consult">[^<]*</a>', "", s, count=1)
+    # tracking + floating call/consult/chat, lifted from the live site's own footer snippet
+    # the template is a fragment with no </head> or </body>, so chrome is appended at the very end -
+    # the same position RealGeeks injects it from Custom Code > Footer HTML. Scripts run either way.
+    s = s.rstrip() + "\n" + site_chrome.GA4_HEAD + "\n" + site_chrome.CHROME + "\n"
 
     # script: external data + finder logic
     import hashlib
