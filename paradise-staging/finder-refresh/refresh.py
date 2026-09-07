@@ -51,13 +51,21 @@ def fetch(url):
     except Exception:
         return url, 0, ""
 
-def crawl(urls):
-    """Returns (dead_list, idx_photos). One pass gives both liveness and the newest-listing photo."""
-    dead, idx, t0 = [], {}, time.time()
-    with cf.ThreadPoolExecutor(24) as ex:
+def crawl(urls, prev_dead=frozenset(), prev_idx=None):
+    """Returns (dead_list, idx_photos). One pass gives both liveness and the newest-listing photo.
+    Only a definitive 404/410 marks a page dead. Timeouts, 429s and 5xx are 'unknown' — the page keeps
+    its previous state (and previous photo) so a slow night at RealGeeks can't blank thousands of cards."""
+    dead, idx, unknown, t0 = [], {}, 0, time.time()
+    prev_idx = prev_idx or {}
+    with cf.ThreadPoolExecutor(16) as ex:
         for n, (u, code, html) in enumerate(ex.map(fetch, urls), 1):
-            if code != 200:
+            if code in (404, 410):
                 dead.append([u, str(code)]); continue
+            if code != 200:
+                unknown += 1
+                if u in prev_dead: dead.append([u, f"prev-{code}"])
+                elif u in prev_idx: idx[u] = prev_idx[u]
+                continue
             i = html.find("Newest Listings")
             seg = html[i:] if i >= 0 else html
             m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
@@ -71,7 +79,8 @@ def crawl(urls):
                           "price": int(pr.replace(",", "")) if pr else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
             elif count:
                 idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
-            if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)}  {int(time.time()-t0)}s")
+            if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)} unknown={unknown}  {int(time.time()-t0)}s")
+    log(f"  crawl unknown (timeout/429/5xx, state carried forward): {unknown}")
     return dead, idx
 
 def main():
@@ -101,7 +110,9 @@ def main():
     if scope != "all":  # e.g. CRAWL_SCOPE=200 for a smoke test
         urls = urls[: int(scope)]
     log(f"crawling {len(urls)} pages from the registry ({len(reg)} URLs total)")
-    dead, idx = crawl(urls)
+    prev_dead = {u for u, _ in (json.load(open(f"{BV}/dead_subdivision_urls.json")) if os.path.exists(f"{BV}/dead_subdivision_urls.json") else [])}
+    prev_idx = json.load(open(f"{BV}/idx_photos.json")) if os.path.exists(f"{BV}/idx_photos.json") else {}
+    dead, idx = crawl(urls, prev_dead, prev_idx)
     log(f"crawl done: dead={len(dead)} photos={len(idx)}")
     dead_set = {u for u, _ in dead}
     for u in urls:
