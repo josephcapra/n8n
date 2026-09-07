@@ -15,12 +15,14 @@ def write(name, rows, prio):
     body = "".join(f"  <url><loc>{escape(r['u'])}</loc><lastmod>{today}</lastmod><changefreq>weekly</changefreq><priority>{prio}</priority></url>\n" for r in rows)
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + body + "</urlset>\n"
     open(f"{OUT}/{name}", "w", encoding="utf-8").write(xml); return name
-files = [write("sitemap-new-construction-communities.xml", new_con, "0.8")]
+# "finder-" prefix so these can never collide with the 54 sitemaps already submitted to GSC
+files = [write("finder-sitemap-new-construction.xml", new_con, "0.8")]
 for i in range(0, len(resale), 45000):
-    files.append(write(f"sitemap-resale-neighborhoods-{i//45000+1}.xml", resale[i:i+45000], "0.6"))
+    files.append(write(f"finder-sitemap-resale-{i//45000+1}.xml", resale[i:i+45000], "0.6"))
 idx = '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "".join(
-    f"  <sitemap><loc>https://www.paradiserealtyfla.com/{f}</loc><lastmod>{today}</lastmod></sitemap>\n" for f in files) + "</sitemapindex>\n"
-open(f"{OUT}/sitemap-communities-index.xml", "w").write(idx)
+    # served from the finder host, which we control; valid for the sc-domain property
+    f"  <sitemap><loc>https://search.paradiserealtyfla.com/{f}</loc><lastmod>{today}</lastmod></sitemap>\n" for f in files) + "</sitemapindex>\n"
+open(f"{OUT}/finder-sitemap-index.xml", "w").write(idx)
 with open(f"{OUT}/currently-404-pages.csv", "w", newline="") as f:
     w = csv.writer(f); w.writerow(["community", "county", "tier", "url (unchanged)", "fallback shown on site"])
     for r in dead: w.writerow([r["n"], r["c"], "new construction" if r["t"] else "resale", r["u"], r.get("f", "")])

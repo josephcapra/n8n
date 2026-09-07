@@ -94,6 +94,30 @@ def llms():
                     headers={"Cache-Control": "public, max-age=3600"})
 
 
+# Community-finder sitemaps. Served from this host rather than through a RealGeeks redirect: the
+# sc-domain:paradiserealtyfla.com property is verified for the whole domain, so a sitemap served here
+# may list www URLs and be submitted against that property. That removes the dependency on the
+# RealGeeks admin redirect table (and its 2FA-gated login) for something we can serve ourselves.
+SITEMAP_GCS = "https://storage.googleapis.com/run-sources-paradise-automation-us-east1/sitemaps/"
+SITEMAP_FILES = {"finder-sitemap-index.xml", "finder-sitemap-new-construction.xml",
+                 "finder-sitemap-resale-1.xml"}
+
+@app.route("/<name>.xml")
+def finder_sitemap(name):
+    fn = f"{name}.xml"
+    if fn not in SITEMAP_FILES:
+        return Response("not found", status=404, mimetype="text/plain")
+    try:
+        req = urllib.request.Request(SITEMAP_GCS + fn + f"?t={int(time.time())}",
+                                     headers={"User-Agent": "paradise-finder/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read()
+    except Exception:
+        return Response("sitemap temporarily unavailable", status=503, mimetype="text/plain")
+    return Response(body, mimetype="application/xml",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.route("/health")
 def health():
     return {"status": "ok", "service": "paradise-finder-test"}
