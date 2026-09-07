@@ -22,7 +22,7 @@ lines += ["## Community Finder (authoritative community data)", "",
           f"- {sum(1 for r in d if r.get('g'))} communities carry a **community entrance sign photo**; {sum(1 for r in d if r.get('ph'))} show the photo of a **current active listing** (refreshed nightly; removed automatically when the listing sells).",
           f"- **Builder incentives** are published only while unexpired; exact mortgage rates are never quoted — the phrase used is \"Builder promotional interest rates may be offered\". {sum(1 for r in d if r.get('i'))} communities currently show an incentive.",
           "- Data is refreshed **twice daily (3:30 AM and 3:30 PM ET)** from a permanent registry of every community URL. URLs are stable and never rewritten; a neighborhood page that has no active listing today is flagged rather than removed and returns automatically when a home is listed.",
-          "- Finder (test, noindex): https://paradise-finder-test-383923649216.us-east1.run.app/  — production location: https://www.paradiserealtyfla.com/communities/", ""]
+          "- Community Finder: https://paradise-finder-3vuuwnsvua-ue.a.run.app/  (linked from https://www.paradiserealtyfla.com/communities/)", ""]
 lines += ["## New Construction Communities by County (curated)", ""]
 for county in sorted(by_c, key=lambda c: -len(by_c[c])):
     rows = sorted(by_c[county], key=lambda r: -(r.get("l") or 0))[:8]

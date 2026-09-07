@@ -23,6 +23,12 @@ INPUT_FILES = ["all988.json", "best_all.json", "demo31.json", "rg_sign_images.js
                "extra_neighborhoods.json", "sitemap_verbatim_urls.json", "incentives_clean.json", "community_urls_master.json"]
 UA = {"User-Agent": "Mozilla/5.0 (ParadiseFinderRefresh)"}
 CARD = re.compile(r'href="(/property/[^"]+)".{0,3000}?property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"\s+alt="([^"]*)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
+# lenient fallback for area pages whose listing widgets are laid out differently: photo first, nearest listing link after it
+LOOSE = re.compile(r'property-images\.realgeeks\.com/([a-z]+/[a-f0-9]+\.jpg)[^"]*"[^>]*?alt="([^"]*)".{0,4000}?href="(/property/[^"]+)"(.{0,1500}?\$([\d,]{5,}))?', re.S)
+def _norm(m):
+    """Return (listing_path, photo_path, address, price_str) from either regex."""
+    g = m.groups()
+    return (g[0], g[1], g[2], g[4]) if g[0].startswith("/property/") else (g[2], g[0], g[1], g[4])
 
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)
 
@@ -54,14 +60,15 @@ def crawl(urls):
                 dead.append([u, str(code)]); continue
             i = html.find("Newest Listings")
             seg = html[i:] if i >= 0 else html
-            m = CARD.search(seg)
+            m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
             # live listing count: prefer an explicit "N Homes/Properties/Listings for Sale" total, else count listing cards
             tot = re.search(r"(\d[\d,]*)\s+(?:Homes?|Properties|Listings|Results)\s+(?:for Sale|Found|Available)", html, re.I)
             count = int(tot.group(1).replace(",", "")) if tot else len(re.findall(r'href="/property/[^"]+"', seg))
             if m:
-                idx[u] = {"photo": f"https://property-images.realgeeks.com/{m.group(2)}", "address": m.group(3),
-                          "listing_url": "https://www.paradiserealtyfla.com" + m.group(1),
-                          "price": int(m.group(5).replace(",", "")) if m.group(5) else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
+                lp, pp, addr, pr = _norm(m)
+                idx[u] = {"photo": f"https://property-images.realgeeks.com/{pp}", "address": addr,
+                          "listing_url": "https://www.paradiserealtyfla.com" + lp,
+                          "price": int(pr.replace(",", "")) if pr else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
             elif count:
                 idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
             if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)}  {int(time.time()-t0)}s")

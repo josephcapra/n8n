@@ -5,7 +5,7 @@ Simple Flask server to serve the finder HTML
 """
 
 import os, time, threading, urllib.request
-from flask import Flask, send_file, Response
+from flask import Flask, send_file, Response, request
 
 app = Flask(__name__)
 
@@ -36,6 +36,9 @@ def gcs_bytes(name, local_fallback):
 @app.route("/")
 def index():
     html = gcs_bytes("index.html", "index.html")
+    # the published page is indexable; only the test host gets noindex
+    if request.host.startswith("paradise-finder-test"):
+        html = html.replace(b'<meta name="description"', b'<meta name="robots" content="noindex, nofollow">\n<meta name="description"', 1)
     return Response(html, mimetype="text/html", headers={"Cache-Control": "public, max-age=300"})
 
 @app.route("/communities_all.js")

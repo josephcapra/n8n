@@ -64,7 +64,7 @@ function card(c) {
             : c.ph ? `<img src="${esc(c.ph)}?width=880&height=495&aspect_ratio=880:495" alt="Current listing in ${esc(c.n)}: ${esc(c.pa)}" loading="lazy">
                      <a href="${esc(c.pu)}" target="_blank" rel="noopener" class="card-idx-caption" title="Photo is from an active MLS listing and updates automatically">Current listing · ${esc(c.pa)}${c.pp ? ' · ' + fmt(c.pp) : ''}</a>`
             :        `<div class="card-image-placeholder" style="background:${grad(c.p)}"></div>`;
-  return `<article class="card">
+  return `<article class="card" data-href="${esc(view || homes)}" role="link" tabindex="0" aria-label="Open ${esc(c.n)}">
     <div class="card-image">${img}
       ${c.v ? `<button type="button" class="card-video-badge" data-video="${esc(c.v.split('/').pop())}" data-title="${esc(c.n)} — ${esc(c.vs || 'official builder video')}" title="Plays here, no redirect">Watch Tour</button>` : ''}
       <div class="card-image-overlay"><h3 class="card-name">${esc(c.n.replace(/^0\d{3}\s+/, ''))}</h3><div class="card-location">${esc(c.y)}${c.ys && c.ys.length ? ` +${c.ys.length} more area${c.ys.length > 1 ? 's' : ''}` : ''}${c.y ? ', ' : ''}${esc(c.c)} County</div></div>
@@ -145,7 +145,14 @@ function openVideo(id, title) {
 function closeVideo() { vf.src = ''; vm.hidden = true; document.body.style.overflow = ''; }
 document.addEventListener('click', e => {
   const b = e.target.closest('.card-video-badge'); if (b) { e.preventDefault(); openVideo(b.dataset.video, b.dataset.title); return; }
-  if (e.target.closest('#vclose') || e.target === vm) closeVideo();
+  if (e.target.closest('#vclose') || e.target === vm) { closeVideo(); return; }
+  // whole card is clickable (image, title, stats, anywhere) — inner links/buttons keep their own targets
+  if (e.target.closest('a, button')) return;
+  const card = e.target.closest('.card[data-href]');
+  if (card) window.open(card.dataset.href, '_blank', 'noopener');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement?.matches('.card[data-href]')) window.open(document.activeElement.dataset.href, '_blank', 'noopener');
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vm.hidden) closeVideo(); });
 new IntersectionObserver(e => { if (e[0].isIntersecting && !els.more.hidden) renderMore(false); }, {rootMargin: '600px'}).observe(els.more);
@@ -178,7 +185,7 @@ def main():
     # head: noindex (test), title/description, ItemList numbers, regenerate VideoObject blocks
     s = s.replace('<title>Florida New Construction Communities</title>', '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Florida Community Finder</title>', 1)
     s = re.sub(r'<meta name="description" content="[^"]*">',
-               f'<meta name="robots" content="noindex, nofollow">\n<meta name="description" content="Search {total:,} Florida communities across {counties} counties — every MLS subdivision plus {curated} curated new construction communities with builders, prices, incentives, official video tours and entrance photos. Paradise Realty FLA.">', s, 1)
+               f'<link rel="canonical" href="https://paradise-finder-3vuuwnsvua-ue.a.run.app/">\n<meta name="description" content="Search {total:,} Florida communities across {counties} counties — every MLS subdivision plus {curated} curated new construction communities with builders, prices, incentives, official video tours and entrance photos. Paradise Realty FLA.">', s, 1)
     s = s.replace('"name": "Florida New Construction Communities",\n  "description": "Comprehensive directory of 988 new construction communities across 37 Florida counties, with pricing, amenities, builder information, and active listings data.",',
                   f'"name": "Florida Community Finder",\n  "description": "Directory of {total:,} Florida residential communities across {counties} counties: every MLS subdivision plus {curated} curated new construction communities with builder, pricing, incentive, video and listing data.",', 1)
     s = s.replace('"numberOfItems": 988,', f'"numberOfItems": {total},', 1)
@@ -221,6 +228,9 @@ def main():
                   '  </div>\n</div>\n<footer class="footer">', 1)
     s = s.replace("</style>",
                   ".card-video-badge{border:0;cursor:pointer;font-family:inherit}\n"
+                  ".card[data-href]{cursor:pointer}\n.card[data-href]:hover .card-name{text-decoration:underline;text-underline-offset:3px}\n"
+                  ".card[data-href]:focus-visible{outline:3px solid var(--teal);outline-offset:2px}\n"
+                  ".card-image::after{content:'';position:absolute;inset:0;background:rgba(13,148,136,0);transition:background .2s}\n.card:hover .card-image::after{background:rgba(13,148,136,.08)}\n"
                   ".badge-muted{background:var(--navy-light);color:var(--text-mid)}\n"
                   ".card-body .badge-ghost{background:var(--navy-light);color:var(--navy)}\n"
                   ".vmodal{position:fixed;inset:0;z-index:1000;background:rgba(10,37,64,.82);display:flex;align-items:center;justify-content:center;padding:16px}\n"
