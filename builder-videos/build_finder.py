@@ -214,7 +214,7 @@ def main():
     # head: noindex (test), title/description, ItemList numbers, regenerate VideoObject blocks
     s = s.replace('<title>Florida New Construction Communities</title>', '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Florida Community Finder</title>', 1)
     s = re.sub(r'<meta name="description" content="[^"]*">',
-               f'<link rel="canonical" href="https://paradise-finder-3vuuwnsvua-ue.a.run.app/">\n<meta name="description" content="Search {total:,} Florida communities across {counties} counties — every MLS subdivision plus {curated} curated new construction communities with builders, prices, incentives, official video tours and entrance photos. Paradise Realty FLA.">', s, 1)
+               f'<link rel="canonical" href="https://search.paradiserealtyfla.com/">\n<meta name="description" content="Search {total:,} Florida communities across {counties} counties — every MLS subdivision plus {curated} curated new construction communities with builders, prices, incentives, official video tours and entrance photos. Paradise Realty FLA.">', s, 1)
     s = s.replace('"name": "Florida New Construction Communities",\n  "description": "Comprehensive directory of 988 new construction communities across 37 Florida counties, with pricing, amenities, builder information, and active listings data.",',
                   f'"name": "Florida Community Finder",\n  "description": "Directory of {total:,} Florida residential communities across {counties} counties: every MLS subdivision plus {curated} curated new construction communities with builder, pricing, incentive, video and listing data.",', 1)
     s = s.replace('"numberOfItems": 988,', f'"numberOfItems": {total},', 1)
