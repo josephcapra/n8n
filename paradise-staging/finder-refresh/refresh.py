@@ -86,15 +86,18 @@ def crawl(urls, prev_dead=frozenset(), prev_idx=None):
             i = html.find("Newest Listings")
             seg = html[i:] if i >= 0 else html
             m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
-            # live listing count: prefer an explicit "N Homes/Properties/Listings for Sale" total, else count listing cards
-            tot = re.search(r"(\d[\d,]*)\s+(?:Homes?|Properties|Listings|Results)\s+(?:for Sale|Found|Available)", html, re.I)
-            count = int(tot.group(1).replace(",", "")) if tot else len(re.findall(r'href="/property/[^"]+"', seg))
-            if m:
+            # count ONLY the listing links this community actually shows. An area page can embed a county-wide
+            # widget whose total ("212") has nothing to do with the community — that mismatch is user-visible.
+            if re.search(r"No current listings|no listings (?:were )?found|check back later", html, re.I):
+                count, m = 0, None
+            else:
+                count = len(set(re.findall(r'href="(/property/[^"]+)"', seg)))
+            if m and count:
                 lp, pp, addr, pr = _norm(m)
                 idx[u] = {"photo": f"https://property-images.realgeeks.com/{pp}", "address": addr,
                           "listing_url": "https://www.paradiserealtyfla.com" + lp,
                           "price": int(pr.replace(",", "")) if pr else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
-            elif count:
+            else:
                 idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
             if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)} unknown={unknown}  {int(time.time()-t0)}s")
     log(f"  crawl unknown (timeout/429/5xx, state carried forward): {unknown}; response codes seen: {dict(sorted(CODES.items(), key=lambda kv: -kv[1]))}")

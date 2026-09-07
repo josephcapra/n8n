@@ -160,9 +160,14 @@ def main():
             if hit.get("price"): r["pp"] = hit["price"]
             n_idx += 1
         # live listing count from the crawl replaces the stale snapshot count; a page that is down has 0 active listings
-        # live count is only trustworthy on /listings/subdivision/ pages; curated area pages embed county-wide widgets
-        if hit and hit.get("count") is not None and "/listings/subdivision/" in (r.get("u") or ""): r["l"] = hit["count"]; r["lv"] = 1
-        if r.get("dl"): r["l"] = 0
+        # Only ever show a count we counted on the community's own page this crawl. The Sheet's area-wide
+        # number produced cards saying "212 listings" that opened to "No current listings" — never again.
+        if hit and hit.get("count") is not None:
+            r["l"] = hit["count"]; r["lv"] = 1
+            if hit["count"] == 0: r["nl"] = 1          # page loads, has nothing listed today
+        else:
+            r.pop("l", None)                            # unverified: say nothing rather than something wrong
+        if r.get("dl"): r.pop("l", None); r["nl"] = 1
     print(f"idx photos attached: {n_idx}")
 
     records.sort(key=lambda r: (-r["t"], r["n"].lower()))

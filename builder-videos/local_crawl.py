@@ -50,13 +50,16 @@ with cf.ThreadPoolExecutor(12) as ex:
             live.add(u)
             i = html.find("Newest Listings"); seg = html[i:] if i >= 0 else html
             m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
-            tot = re.search(r"(\d[\d,]*)\s+(?:Homes?|Properties|Listings|Results)\s+(?:for Sale|Found|Available)", html, re.I)
-            count = int(tot.group(1).replace(",", "")) if tot else len(re.findall(r'href="/property/[^"]+"', seg))
-            if m:
+            # count ONLY the listing links this community actually shows; a page that says it has none has none
+            if re.search(r"No current listings|no listings (?:were )?found|check back later", html, re.I):
+                count, m = 0, None
+            else:
+                count = len(set(re.findall(r'href="(/property/[^"]+)"', seg)))
+            if m and count:
                 lp, pp, addr, pr = norm(m)
                 idx[u] = {"photo": f"https://property-images.realgeeks.com/{pp}", "address": addr, "listing_url": "https://www.paradiserealtyfla.com" + lp,
                           "price": int(pr.replace(",", "")) if pr else 0, "count": count, "checked": time.strftime("%Y-%m-%d")}
-            elif count: idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
+            else: idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
         if n % 5000 == 0:
             print(f"  {n}/{len(urls)} live={len(live)} dead={len(dead)} photos={sum(1 for v in idx.values() if v.get('photo'))} unknown={unknown} {int(time.time()-t0)}s", flush=True)
             json.dump(dead, open(f"{BV}/dead_subdivision_urls.json", "w")); json.dump(idx, open(f"{BV}/idx_photos.json", "w"))
