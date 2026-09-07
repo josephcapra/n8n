@@ -1,0 +1,16 @@
+# Build context for Cloud Build. The Dockerfile only COPYs specific .py files
+# + requirements-cloud.txt, so exclude everything heavy/irrelevant to keep
+# `gcloud builds submit` fast.
+.env
+.git/
+.gitignore
+logs/
+__pycache__/
+*.pyc
+*.pyo
+# Large data files — not needed in the image (URLs are read from GCS at runtime)
+*.csv
+*.png
+*.zip
+.venv/
+venv/
