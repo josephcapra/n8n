@@ -78,8 +78,7 @@ function card(c) {
       ${desc ? `<p class="card-desc">${esc(desc)}</p>` : ''}
     </div>
     <div class="card-footer">
-      <a href="${esc(view || homes)}" class="btn btn-primary" target="_blank" rel="noopener">${c.dl ? 'See Nearby Homes' : 'View Community'}</a>
-      ${!c.dl && c.l > 0 ? `<a href="${esc(homes)}" class="btn btn-outline" target="_blank" rel="noopener">See Homes</a>` : ''}
+      <a href="${esc(view || homes)}" class="btn btn-primary" target="_blank" rel="noopener">View Community</a>
     </div>
   </article>`;
 }

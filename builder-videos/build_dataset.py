@@ -144,7 +144,8 @@ def main():
         if r["t"] == 1 and r["n"] in dead_cur:
             r["dl"] = 1; r["f"] = hubs.get(r["c"]) or search_url(r["n"]); flagged += 1
         elif r["t"] == 0 and r["u"] in dead_subs:
-            r["dl"] = 1; r["f"] = search_url(r["n"]); flagged += 1
+            # the search-results link is unreliable (Joe); a page with no listing today sends people to its county hub
+            r["dl"] = 1; r["f"] = hubs.get(r["c"]) or search_url(r["n"]); flagged += 1
         if r.get("v") and r["n"] in dead_vid:
             r.pop("v", None); r.pop("vs", None)
     print(f"link hygiene: {flagged} pages currently 404 flagged (URLs untouched), {len(dead_vid)} dead videos dropped")
