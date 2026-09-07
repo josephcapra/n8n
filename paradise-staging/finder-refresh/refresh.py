@@ -44,20 +44,36 @@ def pull(bucket):
         if name.endswith(".jpg"): open(f"{BV}/signs/{name}", "a").close(); n += 1
     log(f"inputs pulled; {n} sign stubs")
 
+import random, threading
+CODES = {}; _clock = threading.Lock(); _pause_until = [0.0]
 def fetch(url):
-    try:
-        r = requests.get(url, headers=UA, timeout=25, allow_redirects=True)
-        return url, r.status_code, (r.text if r.status_code == 200 else "")
-    except Exception:
-        return url, 0, ""
+    """Polite fetch: up to 3 attempts; on 429/403/5xx/timeout back off (and pause the whole pool on 429/403)."""
+    for attempt in range(3):
+        wait = _pause_until[0] - time.time()
+        if wait > 0: time.sleep(wait)
+        try:
+            r = requests.get(url, headers=UA, timeout=25, allow_redirects=True)
+            code = r.status_code
+        except Exception:
+            code = 0
+        with _clock: CODES[code] = CODES.get(code, 0) + 1
+        if code == 200: return url, 200, r.text
+        if code in (404, 410): return url, code, ""
+        if code in (429, 403):
+            retry_after = 0
+            try: retry_after = int(r.headers.get("Retry-After", "0"))
+            except Exception: pass
+            _pause_until[0] = max(_pause_until[0], time.time() + max(retry_after, 20 * (attempt + 1)))
+        time.sleep(random.uniform(1, 3) * (attempt + 1))
+    return url, code, ""
 
 def crawl(urls, prev_dead=frozenset(), prev_idx=None):
     """Returns (dead_list, idx_photos). One pass gives both liveness and the newest-listing photo.
     Only a definitive 404/410 marks a page dead. Timeouts, 429s and 5xx are 'unknown' — the page keeps
     its previous state (and previous photo) so a slow night at RealGeeks can't blank thousands of cards."""
-    dead, idx, unknown, t0 = [], {}, 0, time.time()
+    dead, idx, live, unknown, t0 = [], {}, set(), 0, time.time()
     prev_idx = prev_idx or {}
-    with cf.ThreadPoolExecutor(16) as ex:
+    with cf.ThreadPoolExecutor(8) as ex:
         for n, (u, code, html) in enumerate(ex.map(fetch, urls), 1):
             if code in (404, 410):
                 dead.append([u, str(code)]); continue
@@ -66,6 +82,7 @@ def crawl(urls, prev_dead=frozenset(), prev_idx=None):
                 if u in prev_dead: dead.append([u, f"prev-{code}"])
                 elif u in prev_idx: idx[u] = prev_idx[u]
                 continue
+            live.add(u)   # only a real 200 counts as live
             i = html.find("Newest Listings")
             seg = html[i:] if i >= 0 else html
             m = CARD.search(seg) or CARD.search(html) or LOOSE.search(html)
@@ -80,8 +97,8 @@ def crawl(urls, prev_dead=frozenset(), prev_idx=None):
             elif count:
                 idx[u] = {"count": count, "checked": time.strftime("%Y-%m-%d")}
             if n % 5000 == 0: log(f"  crawl {n}/{len(urls)}  dead={len(dead)} photos={len(idx)} unknown={unknown}  {int(time.time()-t0)}s")
-    log(f"  crawl unknown (timeout/429/5xx, state carried forward): {unknown}")
-    return dead, idx
+    log(f"  crawl unknown (timeout/429/5xx, state carried forward): {unknown}; response codes seen: {dict(sorted(CODES.items(), key=lambda kv: -kv[1]))}")
+    return dead, idx, live
 
 def main():
     client = storage.Client(); bucket = client.bucket(BUCKET)
@@ -112,12 +129,11 @@ def main():
     log(f"crawling {len(urls)} pages from the registry ({len(reg)} URLs total)")
     prev_dead = {u for u, _ in (json.load(open(f"{BV}/dead_subdivision_urls.json")) if os.path.exists(f"{BV}/dead_subdivision_urls.json") else [])}
     prev_idx = json.load(open(f"{BV}/idx_photos.json")) if os.path.exists(f"{BV}/idx_photos.json") else {}
-    dead, idx = crawl(urls, prev_dead, prev_idx)
+    dead, idx, live = crawl(urls, prev_dead, prev_idx)
     log(f"crawl done: dead={len(dead)} photos={len(idx)}")
-    dead_set = {u for u, _ in dead}
     for u in urls:
         e = reg[u]; e["last_checked"] = today
-        if u not in dead_set: e["last_live"] = today
+        if u in live: e["last_live"] = today   # never stamp live on a timeout — that once invented 15k phantom communities
         if u in idx and idx[u].get("address") and not e.get("city"): e["city"] = idx[u]["address"].rsplit(",", 1)[-1].strip()
     json.dump(reg, open(reg_path, "w"))
     if scope == "all":
