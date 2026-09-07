@@ -50,8 +50,8 @@ def main():
     open(STAGING, "w").write(s)
 
     NOTE = ('<div style="background:#C9A84C;color:#0A2540;text-align:center;padding:10px 16px;font:600 14px Inter,-apple-system,sans-serif">'
-            'This is a 31-community preview. The full finder (41,646 communities, sign photos, live listing photos, video tours) is at '
-            '<a href="https://paradise-finder-test-383923649216.us-east1.run.app/" style="color:#0A2540;text-decoration:underline">paradise-finder-test…run.app</a></div>\n')
+            'This is a 31-community preview. The full Community Finder (41,500+ communities, sign photos, live listing photos, video tours) is live at '
+            '<a href="https://paradise-finder-3vuuwnsvua-ue.a.run.app/" style="color:#0A2540;text-decoration:underline">paradise-finder…run.app</a></div>\n')
     inl = s.replace('<header class="header">', NOTE + '<header class="header">', 1)
     for c in data["communities"]:
         if "image_url" not in c: continue

@@ -8,7 +8,10 @@ d = json.loads(re.search(r"const DATA=(\[.*\]);\n", open(DATA).read(), re.S).gro
 sample = d[::100]
 def shown_href(r): return (r.get("f") or r.get("h") or r["u"]) if r.get("dl") else r["u"]
 def st(u): return subprocess.run(["curl", "-sIL", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20", "-A", "Mozilla/5.0", u], capture_output=True, text=True).stdout
-with cf.ThreadPoolExecutor(16) as ex: codes = list(ex.map(st, [shown_href(r) for r in sample]))
+with cf.ThreadPoolExecutor(8) as ex: codes = list(ex.map(st, [shown_href(r) for r in sample]))
+# a timeout ("000") is not a broken page — retry those sequentially with a longer window before judging
+def st_slow(u): return subprocess.run(["curl", "-sIL", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "45", "-A", "Mozilla/5.0", u], capture_output=True, text=True).stdout
+codes = [c if c != "000" else st_slow(shown_href(r)) for r, c in zip(sample, codes)]
 bad = [(r["n"], c, shown_href(r)) for r, c in zip(sample, codes) if c != "200"]
 print(f"every-100th check: {len(sample)} pages tested, {len(sample)-len(bad)} OK, {len(bad)} failed")
 for b in bad[:20]: print("  FAIL", b)
