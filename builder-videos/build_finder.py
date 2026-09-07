@@ -6,6 +6,7 @@ Input : scratchpad/community-finder-demo.src.html (theme + layout source of trut
 Output: ~/paradise-staging/finder-test/index.html
 """
 import json, os, re
+import site_footer
 
 HOME = os.path.expanduser("~")
 SRC = "/private/tmp/claude-501/-Users-User/ed61b43f-3353-4c6d-9ca3-6f8aac402470/scratchpad/community-finder-demo.src.html"
@@ -321,15 +322,6 @@ def main():
                   ".sb-clear:hover{border-color:var(--teal);color:var(--teal-dark)}\n"
                   "@media (max-width:900px){.layout{display:block;padding:14px 16px 0}.sidebar{position:static;width:auto;max-height:none;flex:none;margin-bottom:16px;padding:12px}\n"
                   ".sb-toggle{display:block}.sb-body{display:none;padding-top:14px}.sidebar.open .sb-body{display:block}}\n</style>", 1)
-    s = s.replace('<div class="footer-bottom">',
-                  '<div class="footer-note"><strong>About builder incentives:</strong> incentives shown are provided by the builder, '
-                  'are current as of the date displayed, and may change or end without notice. Terms, eligibility, and availability vary by '
-                  'community and by home, and may require the use of a preferred lender or title company. Nothing here is an offer, a guarantee '
-                  'of savings, or a commitment to lend. Confirm current details with Paradise Realty FLA before relying on them. '
-                  'Register with us before visiting a builder sales office to preserve your right to representation.</div>\n'
-                  '  <div class="footer-bottom">', 1)
-    s = s.replace("</style>", ".footer-note{max-width:1280px;margin:28px auto 0;padding:16px 24px 0;border-top:1px solid rgba(255,255,255,.14);"
-                              "font-size:12px;line-height:1.6;color:rgba(255,255,255,.72)}\n.footer-note strong{color:rgba(255,255,255,.9)}\n</style>", 1)
     s = s.replace('<footer class="footer">',
                   '<div id="vmodal" class="vmodal" hidden role="dialog" aria-modal="true" aria-labelledby="vtitle">\n'
                   '  <div class="vbox">\n    <div class="vbar"><span id="vtitle"></span><button id="vclose" type="button" aria-label="Close video">&times;</button></div>\n'
@@ -353,6 +345,11 @@ def main():
                   ".card-idx-caption:hover{background:var(--teal)}\n</style>", 1)
     s = s.replace('tracks over 988 active new construction communities across 37 Florida counties',
                   f'tracks {total:,} Florida communities across {counties} counties, including {curated} curated new construction communities', 1)
+
+    # Joe: the finder should carry the same footer as paradiserealtyfla.com, so the subdomain
+    # reads as the same company. Replaces the finder's own three-column footer entirely.
+    s = re.sub(r'<footer class="footer">.*?</footer>', lambda m: site_footer.html(), s, flags=re.S)
+    s = s.replace("</style>", site_footer.CSS + "\n</style>", 1)
 
     # script: external data + finder logic
     import hashlib

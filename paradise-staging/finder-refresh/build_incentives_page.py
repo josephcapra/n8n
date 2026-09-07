@@ -12,6 +12,7 @@ nothing has to be taken down by hand at the end of a month.
 Output: ~/paradise-staging/finder-test/incentives.html  (published to GCS by refresh.py, served at /incentives)
 """
 import datetime, gzip, html, json, os, re
+import site_footer
 
 HOME = os.path.expanduser("~")
 BV = f"{HOME}/builder-videos"
@@ -293,7 +294,7 @@ def main():
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
-<style>{CSS}</style>
+<style>{CSS}{site_footer.CSS}</style>
 {ld}
 </head>
 <body>
@@ -328,15 +329,7 @@ def main():
 
 <section class="faq"><h2>Questions buyers ask about builder incentives</h2>{faq_html}</section>
 
-<footer class="footer"><div class="footer-in">
-  <strong>About builder incentives:</strong> incentives shown are provided by the builder, are current as of the date
-  displayed, and may change or end without notice. Terms, eligibility, and availability vary by community and by home,
-  and may require the use of a preferred lender or title company. Nothing on this page is an offer, a guarantee of
-  savings, or a commitment to lend. Confirm current details with Paradise Realty FLA before relying on them. Register
-  with us before visiting a builder sales office to preserve your right to representation.
-  <div class="footer-bottom">Paradise Realty FLA &middot; 6103 SE Federal Hwy, Stuart, FL 34997 &middot;
-    <a href="{attr(PHONE_HREF)}">{esc(PHONE)}</a> &middot; <a href="{attr(FINDER)}">Community Finder</a></div>
-</div></footer>
+{site_footer.html()}
 </body>
 </html>'''
     open(OUT, "w").write(page)
