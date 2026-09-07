@@ -5,6 +5,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir flask gunicorn
 
 COPY index.html .
+COPY incentives.html .
 COPY main.py .
 COPY communities_all.js.gz .
 

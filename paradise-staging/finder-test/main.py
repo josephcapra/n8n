@@ -41,6 +41,16 @@ def index():
         html = html.replace(b'<meta name="description"', b'<meta name="robots" content="noindex, nofollow">\n<meta name="description"', 1)
     return Response(html, mimetype="text/html", headers={"Cache-Control": "public, max-age=300"})
 
+@app.route("/incentives")
+def incentives():
+    """Public builder-incentive page. Rebuilt by the refresh job; when no offer is running it serves its
+    own empty state rather than 404ing, so a shared or indexed link never dead-ends."""
+    html = gcs_bytes("incentives.html", "incentives.html")
+    if request.host.startswith("paradise-finder-test"):
+        html = html.replace(b'<meta name="description"', b'<meta name="robots" content="noindex, nofollow">\n<meta name="description"', 1)
+    return Response(html, mimetype="text/html", headers={"Cache-Control": "public, max-age=300"})
+
+
 @app.route("/communities_all.js")
 def data():
     gz = gcs_bytes("communities_all.js.gz", "communities_all.js.gz")  # stored gzipped; GCS returns it raw with identity encoding

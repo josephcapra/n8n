@@ -188,11 +188,15 @@ def main():
     except Exception as e:
         log(f"incentives: sheet refresh failed ({e}); keeping the previous published set")
 
-    import build_dataset, build_finder
+    import build_dataset, build_finder, build_incentives_page
     build_finder.SRC = f"{BV}/template.src.html"
     build_dataset.main(); build_finder.main()
+    # public incentives page, built from the FINISHED dataset so it can never disagree with the cards.
+    # Self-clearing: no unexpired offers -> empty state here and no nav link on the finder.
+    log(f"incentives page: {build_incentives_page.main()} live offer(s)")
 
     for local, remote in ((f"{ST}/communities_all.js.gz", "communities_all.js.gz"), (f"{ST}/index.html", "index.html"),
+                          (f"{ST}/incentives.html", "incentives.html"),
                           (f"{ST}/communities_all.stats.json", "stats.json")):
         b = bucket.blob(OUT + remote)
         if remote.endswith(".gz"): b.content_encoding = "gzip"; b.content_type = "application/javascript"

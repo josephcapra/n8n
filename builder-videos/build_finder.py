@@ -222,6 +222,20 @@ def main():
     vo = "".join(f'<script type="application/ld+json">{json.dumps(o, separators=(",", ":"), ensure_ascii=False)}</script>\n' for o in video_objects(records))
     s = s.replace("<style>\n:root {", vo + "<style>\n:root {", 1)
 
+    # Header link to the public incentives page — only while offers actually exist. When the last one
+    # expires the link disappears on the next rebuild, so there is never a nav item leading to an empty page.
+    live_inc = sum(1 for r in records if r.get("i"))
+    if live_inc:
+        s = s.replace('<a href="tel:7722477110" class="header-phone">',
+                      f'<a href="/incentives" class="header-inc">Builder incentives <b>{live_inc}</b></a>\n      '
+                      '<a href="tel:7722477110" class="header-phone">', 1)
+        s = s.replace("</style>",
+                      ".header-inc{display:inline-flex;align-items:center;gap:7px;color:#fff;text-decoration:none;font-weight:600;font-size:13px;"
+                      "border:1px solid rgba(201,168,76,.55);border-radius:999px;padding:6px 13px;white-space:nowrap}\n"
+                      ".header-inc b{background:var(--gold);color:var(--navy);font-size:11px;font-weight:800;border-radius:999px;padding:1px 7px}\n"
+                      ".header-inc:hover{border-color:var(--gold);background:rgba(201,168,76,.14)}\n"
+                      "@media (max-width:700px){.header-inc{display:none}}\n</style>", 1)
+
     # body copy + controls
     s = s.replace('<h1>Florida New Construction Communities</h1>', '<h1>Florida Community Finder</h1>', 1)
     s = s.replace('<p>Search 988 communities across 37 counties. Compare builders, prices, and amenities.</p>',
