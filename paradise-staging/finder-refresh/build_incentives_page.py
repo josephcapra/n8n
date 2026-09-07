@@ -85,14 +85,20 @@ def card(r, nearby, today):
         chip = f'<p class="chip{" urgent" if urgent else ""}">Through {esc(thru)}{left}</p>'
 
     if r.get("ph"):
-        media = (f'<img src="{attr(r["ph"])}?width=760&height=428&format=jpeg&fit=cover" alt="{attr("Home for sale in " + name)}" loading="lazy" width="760" height="428">'
+        media = (f'<img src="{attr(r["ph"])}?width=880&height=495&aspect_ratio=880:495" alt="{attr("Home for sale in " + name)}" loading="lazy">'
                  + (f'<a class="shot" href="{attr(r.get("pu"))}">Current listing &middot; {esc(r.get("pa"))}</a>' if r.get("pu") and r.get("pa") else ""))
     elif r.get("g"):
         media = f'<img src="{attr(r["g"])}" alt="{attr(name + " community entrance sign")}" loading="lazy">'
     else:
         media = f'<div class="ph" style="background:{grad(r.get("p"))}"></div>'
 
-    meta = " &middot; ".join(filter(None, [esc(r.get("y")), (esc(r["c"]) + " County") if r.get("c") else "", esc(r.get("b") or r.get("ib"))]))
+    # Attribute the OFFER only to the builder named on the incentive row (ib). The community's own builder
+    # field (b) is who builds there, which is not always who is funding the promotion — Central Park Townhomes
+    # is a DR Horton community running an RJM Custom Homes offer. Saying "Offered by DR Horton" there would be
+    # a false claim, so with no ib we say "the builder" and let the copy name whoever it names.
+    offer_builder = r.get("ib") or ""
+    meta = " &middot; ".join(filter(None, [esc(r.get("y")), (esc(r["c"]) + " County") if r.get("c") else "",
+                                           esc(r.get("b") + " community") if r.get("b") else ""]))
     facts = " &middot; ".join(filter(None, [price_line(r), f'{r["l"]:,} active listing{"" if r["l"] == 1 else "s"}' if r.get("l") and not (r.get("nl") or r.get("dl")) else ""]))
 
     near_html = ""
@@ -111,7 +117,7 @@ def card(r, nearby, today):
     {chip}
     <p class="copy">{esc(r["i"])}</p>
     {f'<p class="facts">{facts}</p>' if facts else ''}
-    <p class="set-by">Offered by {esc(r.get("ib") or r.get("b") or "the builder")}. Subject to change or cancellation without notice.</p>
+    <p class="set-by">Offered by {esc(offer_builder or "the builder")}. Subject to change or cancellation without notice.</p>
     {near_html}
     <div class="cta"><a class="btn" href="{attr(url)}">View {esc(name)}</a>
       <a class="btn ghost" href="{attr(CONTACT)}">Ask about this incentive</a></div>
@@ -255,7 +261,9 @@ def main():
     items = "".join(
         f'{{"@type":"ListItem","position":{i+1},"item":{{"@type":"Offer","name":{json.dumps("Builder incentive at " + r["n"])},'
         f'"description":{json.dumps(r["i"][:300])},"category":"Builder incentive",'
-        f'"availabilityEnds":{json.dumps(r.get("ix",""))},"seller":{json.dumps({"@type":"Organization","name":r.get("ib") or r.get("b") or "Builder"})},'
+        f'"availabilityEnds":{json.dumps(r.get("ix",""))},'
+        + (f'"seller":{json.dumps({"@type":"Organization","name":r["ib"]})},' if r.get("ib") else "")
+        +
         f'"url":{json.dumps(r.get("u",""))}}}}}' + ("," if i < n - 1 else "") for i, r in enumerate(recs))
     faq_ld = ",".join(f'{{"@type":"Question","name":{json.dumps(q)},"acceptedAnswer":{{"@type":"Answer","text":{json.dumps(a)}}}}}' for q, a in FAQ)
     ld = ('<script type="application/ld+json">{"@context":"https://schema.org","@graph":['

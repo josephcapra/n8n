@@ -50,6 +50,20 @@ def parse_date(cell):
     d = parse_dates(cell)
     return d[0] if d else None
 
+def headline_of(t, limit=240):
+    """Trim to a clean stopping point. Cutting at a fixed character count left cards reading
+    '...Don't miss this opportunity t', which looks broken and can truncate a condition mid-sentence."""
+    t = t.strip()
+    if len(t) <= limit: return t
+    cut = t[:limit]
+    # "...master-planned features in Port St. Lucie" must not end at "Port St."
+    ABBR = re.compile(r"(?:^|[\s(])(?:st|ave|blvd|rd|ln|ct|dr|ft|mt|hwy|pkwy|inc|co|corp|ltd|no|"
+                      r"jr|sr|mr|mrs|ms|approx|est|vs|[a-z])\.$", re.I)
+    ends = [m.end() - 1 for m in re.finditer(r"[.!?] ", cut) if not ABBR.search(cut[:m.start() + 1])]
+    if ends and ends[-1] >= 90: return cut[:ends[-1]]       # whole sentences only
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp >= 90 else cut).rstrip(" ,;:-") + "…"
+
 def end_of_month(d):
     nxt = d.replace(day=28) + datetime.timedelta(days=4)
     return nxt - datetime.timedelta(days=nxt.day)
@@ -145,7 +159,7 @@ def build(communities, today=None, out_dir="."):
         details, notes = sanitize(row.get("IncentiveDetails"))
         base = {"builder": builder_from(row.get("BuilderName")), "expires": end.isoformat() if end else "",
                 "assumed_expiry": assumed, "shared_row_earliest_date": multi_dated,
-                "headline": details[:180], "notes": notes,
+                "headline": headline_of(details), "notes": notes,
                 "sheet_date": (posted.isoformat() if posted else clean(row.get("Date")).split("\n")[0])}
         if not details: continue
         if end and end < today: review["expired"].append(base); continue
