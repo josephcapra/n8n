@@ -14,7 +14,7 @@ OUT = f"{HOME}/paradise-staging/finder-test/index.html"
 
 FINDER_JS = r"""
 const $ = id => document.getElementById(id);
-const els = {q: $('search'), county: $('county'), price: $('price'), inc: $('incentive'), lst: $('listings'),
+const els = {q: $('search'), county: $('county'), city: $('city'), price: $('price'), inc: $('incentive'), lst: $('listings'),
              vid: $('video'), cur: $('curated'), sort: $('sort'), count: $('count'), grid: $('grid'), empty: $('empty'), more: $('more')};
 const PAGE = 48;
 let filtered = [], shown = 0;
@@ -40,9 +40,9 @@ function card(c) {
   const price = !c.p ? 'Contact for Price'
               : (c.x && c.x > c.p) ? `${usd(c.p)} <small>to</small> ${usd(c.x)}`
               : (curated ? `<small>from</small> ${usd(c.p)}` : usd(c.p));
-  // curated communities without a matched MLS page carry the Sheet's *area-wide* listing count — label it honestly
-  const areaCount = curated && !c.lv;
-  const sub = [c.dl ? 'No active listings' : (c.l ? `${c.l.toLocaleString()} ${areaCount ? 'listings in area' : 'listing' + (c.l === 1 ? '' : 's')}` : ''), c.pt && TIER[c.pt] ? TIER[c.pt] : ''].filter(Boolean).join(' · ');
+  // every count shown was counted on that community's own page; anything unverified shows no count at all
+  const noneNow = c.dl || c.nl;
+  const sub = [noneNow ? 'No active listings' : (c.l > 0 ? `${c.l.toLocaleString()} listing${c.l === 1 ? '' : 's'}` : ''), c.pt && TIER[c.pt] ? TIER[c.pt] : ''].filter(Boolean).join(' · ');
   const homes = c.h || c.u;
   const view = c.dl ? (c.f || homes) : c.u;   // page currently 404 -> working fallback; the record's URL itself is never changed
   const desc = c.d ? c.d.slice(0, 120) + (c.d.length > 120 ? '…' : '') : (c.ty ? `${c.ty} subdivision in ${c.y}, ${c.c} County.` : '');
@@ -58,11 +58,12 @@ function card(c) {
   const types = c.ty ? `<div class="types"><strong>Types:</strong> ${esc(c.ty)}${c.yr ? ` · Built ${c.yr}+` : ''}</div>` : '';
   const am = AMEN.filter(([b]) => hasBit(c.af, b)).map(([, l]) => l);
   const amen = am.length ? `<div class="amen">${am.slice(0, 6).map(l => `<span>${l}</span>`).join('')}${am.length > 6 ? `<span class="more">+${am.length - 6} more</span>` : ''}</div>` : '';
-  if (c.dl) badges += '<span class="badge badge-muted" title="This neighborhood page returns when a home is listed">No active listings right now</span>';
-  else if (c.l > 0) badges += `<span class="badge badge-ghost" title="${c.lv ? 'Live count from the last refresh' : 'Active listings in the surrounding area'}">${c.l} ${areaCount ? 'in area' : 'Listed'}</span>`;
-  const img = c.g  ? `<img src="${esc(c.g)}" alt="${esc(c.n)} community entrance sign" loading="lazy">`
-            : c.ph ? `<img src="${esc(c.ph)}?width=880&height=495&aspect_ratio=880:495" alt="Current listing in ${esc(c.n)}: ${esc(c.pa)}" loading="lazy">
+  if (noneNow) badges += '<span class="badge badge-muted" title="Checked on the community page — nothing listed today. It returns automatically when a home is listed.">No active listings right now</span>';
+  else if (c.l > 0) badges += `<span class="badge badge-ghost" title="Counted on the community page at the last refresh">${c.l} Listed</span>`;
+  // image priority (Joe): if the community has a listing, show that listing's photo; else its entrance sign; else a gradient
+  const img = c.ph ? `<img src="${esc(c.ph)}?width=880&height=495&aspect_ratio=880:495" alt="Current listing in ${esc(c.n)}: ${esc(c.pa)}" loading="lazy">
                      <a href="${esc(c.pu)}" target="_blank" rel="noopener" class="card-idx-caption" title="Photo is from an active MLS listing and updates automatically">Current listing · ${esc(c.pa)}${c.pp ? ' · ' + fmt(c.pp) : ''}</a>`
+            : c.g  ? `<img src="${esc(c.g)}" alt="${esc(c.n)} community entrance sign" loading="lazy">`
             :        `<div class="card-image-placeholder" style="background:${grad(c.p)}"></div>`;
   return `<article class="card" data-href="${esc(view || homes)}" role="link" tabindex="0" aria-label="Open ${esc(c.n)}">
     <div class="card-image">${img}
@@ -97,6 +98,7 @@ function renderMore(reset) {
 function filter() {
   const q = els.q.value.toLowerCase().trim();
   const county = els.county.value, pr = els.price.value, sortBy = els.sort.value;
+  const city = els.city.value.trim().toLowerCase();
   const needInc = els.inc.classList.contains('active'), needLst = els.lst.classList.contains('active');
   const needVid = els.vid.classList.contains('active'), needCur = els.cur.classList.contains('active');
   const bits = lifestyleOn(), types = typesOn();
@@ -106,6 +108,7 @@ function filter() {
     if (bits.length && !bits.every(b => hasBit(c.af, b))) return false;
     if (types.length && !types.some(t => (c.ty || '').toLowerCase().includes(t))) return false;
     if (county && c.c !== county) return false;
+    if (city && !(c.y || '').toLowerCase().startsWith(city)) return false;
     if (q && !c._s.includes(q)) return false;
     if (pr) { const p = c.p || 0; if (!p) return false; if (min && p < min) return false; if (max && p > max) return false; }
     if (needInc && !c.i) return false;
@@ -127,9 +130,31 @@ function filter() {
 }
 
 FINDER_META.county_list.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c + ' County'; els.county.appendChild(o); });
+
+// city suggestions follow the county selection, so the list stays short and relevant
+function fillCities() {
+  const county = els.county.value;
+  const seen = new Set();
+  for (const c of DATA) if (c.y && (!county || c.c === county)) seen.add(c.y);
+  $('citylist').innerHTML = [...seen].sort().map(c => `<option value="${c.replace(/"/g, '&quot;')}">`).join('');
+}
+fillCities();
+
 let t; els.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(filter, 150); });
+els.city.addEventListener('input', () => { clearTimeout(t); t = setTimeout(filter, 150); });
 document.querySelector('.search-btn').addEventListener('click', filter);
-['county', 'price', 'sort'].forEach(k => els[k].addEventListener('change', filter));
+els.county.addEventListener('change', () => { fillCities(); filter(); });
+['price', 'sort'].forEach(k => els[k].addEventListener('change', filter));
+$('clearall').addEventListener('click', () => {
+  els.q.value = ''; els.city.value = ''; els.county.value = ''; els.price.value = ''; els.sort.value = 'featured';
+  ['incentive', 'listings', 'video', 'curated'].forEach(id => $(id).classList.remove('active'));
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  fillCities(); filter(); window.scrollTo({top: 0, behavior: 'smooth'});
+});
+$('sbtoggle').addEventListener('click', e => {
+  const sb = e.currentTarget.closest('.sidebar'); const open = sb.classList.toggle('open');
+  e.currentTarget.setAttribute('aria-expanded', open);
+});
 ['inc', 'lst', 'vid', 'cur'].forEach(k => els[k].addEventListener('click', () => { els[k].classList.toggle('active'); filter(); }));
 document.querySelectorAll('.pill').forEach(p => p.addEventListener('click', () => { p.classList.toggle('active'); filter(); }));
 els.more.addEventListener('click', () => renderMore(false));
@@ -220,6 +245,58 @@ def main():
                   ".amen{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}\n.amen span{font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;color:var(--text-mid);background:var(--cream)}\n.amen .more{color:var(--teal-dark)}\n</style>", 1)
     s = s.replace('<div id="grid" class="grid"></div>',
                   '<div id="grid" class="grid"></div>\n  <button id="more" class="btn btn-outline load-more" hidden>Show more</button>', 1)
+
+    # ---- two-column layout: sticky "Search criteria" sidebar on the left, scrolling results on the right ----
+    price_opts = re.search(r'<select id="price"[^>]*>(.*?)</select>', s, re.S).group(1).strip()
+    filters_block = re.search(r'<div class="filters">.*?(?=<div class="stats-bar">)', s, re.S).group(0)
+    stats_block = re.search(r'<div class="stats-bar">.*?(?=<main class="main">)', s, re.S).group(0)
+    main_block = re.search(r'<main class="main">.*?</main>', s, re.S).group(0)
+    life_pills = "".join(f'<button type="button" class="pill life" data-bit="{b}">{l}</button>' for b, l in life)
+    type_pills = "".join(f'<button type="button" class="pill type" data-type="{t}">{t}</button>' for t in types)
+    sidebar = f'''<div class="layout">
+  <aside class="sidebar" aria-label="Search criteria">
+    <button type="button" class="sb-toggle" id="sbtoggle" aria-expanded="false" aria-controls="sbbody">Search criteria</button>
+    <div class="sb-body" id="sbbody">
+      <div class="sb-group"><label class="sb-label" for="county">County</label>
+        <select id="county" class="filter-select"><option value="">All counties</option></select></div>
+      <div class="sb-group"><label class="sb-label" for="city">City</label>
+        <input id="city" class="filter-select" type="search" list="citylist" placeholder="Any city" autocomplete="off">
+        <datalist id="citylist"></datalist></div>
+      <div class="sb-group"><label class="sb-label" for="price">Price range</label>
+        <select id="price" class="filter-select">{price_opts}</select></div>
+      <div class="sb-group"><span class="sb-label">Show only</span>
+        <button id="curated" class="filter-toggle">New construction</button>
+        <button id="listings" class="filter-toggle">Active listings</button>
+        <button id="video" class="filter-toggle">Has video tour</button>
+        <button id="incentive" class="filter-toggle gold">Has incentive</button></div>
+      <div class="sb-group"><span class="sb-label">Lifestyle</span><div class="pillwrap">{life_pills}</div></div>
+      <div class="sb-group"><span class="sb-label">Home type</span><div class="pillwrap">{type_pills}</div></div>
+      <button type="button" class="sb-clear" id="clearall">Clear all filters</button>
+    </div>
+  </aside>
+  <div class="results">
+    {stats_block}
+    {main_block}
+  </div>
+</div>
+'''
+    s = s.replace(filters_block + stats_block + main_block, sidebar, 1)
+    s = s.replace("</style>",
+                  ".layout{max-width:1440px;margin:0 auto;padding:20px 24px 0;display:flex;gap:24px;align-items:flex-start}\n"
+                  ".sidebar{position:sticky;top:78px;width:262px;flex:0 0 262px;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;"
+                  "background:var(--white);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:16px}\n"
+                  ".sidebar::-webkit-scrollbar{width:8px}.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}\n"
+                  ".results{flex:1;min-width:0}\n.results .main{padding:0}\n.results .stats-bar{padding:0 0 14px;border:0;background:transparent}\n"
+                  ".sb-toggle{display:none;width:100%;border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:8px;padding:11px 14px;font:700 13px Inter,inherit;cursor:pointer}\n"
+                  ".sb-group{padding:0 0 14px;margin-bottom:14px;border-bottom:1px solid var(--border)}\n.sb-group:last-of-type{border-bottom:0;margin-bottom:8px}\n"
+                  ".sb-label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:8px}\n"
+                  ".sidebar .filter-select{width:100%;margin-bottom:0}\n"
+                  ".sidebar .filter-toggle{display:block;width:100%;text-align:left;margin-bottom:6px}\n"
+                  ".pillwrap{display:flex;flex-wrap:wrap;gap:6px}\n"
+                  ".sb-clear{width:100%;border:1px solid var(--border);background:var(--cream);color:var(--text-mid);border-radius:8px;padding:9px;font:600 12px Inter,inherit;cursor:pointer}\n"
+                  ".sb-clear:hover{border-color:var(--teal);color:var(--teal-dark)}\n"
+                  "@media (max-width:900px){.layout{display:block;padding:14px 16px 0}.sidebar{position:static;width:auto;max-height:none;flex:none;margin-bottom:16px;padding:12px}\n"
+                  ".sb-toggle{display:block}.sb-body{display:none;padding-top:14px}.sidebar.open .sb-body{display:block}}\n</style>", 1)
     s = s.replace('<footer class="footer">',
                   '<div id="vmodal" class="vmodal" hidden role="dialog" aria-modal="true" aria-labelledby="vtitle">\n'
                   '  <div class="vbox">\n    <div class="vbar"><span id="vtitle"></span><button id="vclose" type="button" aria-label="Close video">&times;</button></div>\n'
