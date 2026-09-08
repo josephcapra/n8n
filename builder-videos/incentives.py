@@ -17,6 +17,7 @@ DISCLAIMER = ("Incentives are set by the builder and may change or end without n
 
 RATE_CTX = re.compile(r"[^.;]*\b(rate|rates|apr|financ\w*|buy-?down|interest|fixed|fha|va|conventional|mortgage|arm)\b[^.;]*\d+(\.\d+)?\s*%[^.;]*[.;]?"
                       r"|[^.;]*\d+(\.\d+)?\s*%[^.;]*\b(rate|rates|apr|financ\w*|buy-?down|interest|fixed|fha|va|conventional|mortgage|arm)\b[^.;]*[.;]?", re.I)
+MONEY = re.compile(r"\$\s?[\d,]{3,}")
 COMMISSION = re.compile(r"[^.;]*\b(commission|co-?op|bonus to (the )?agent|agent bonus|broker bonus|selling agent)\b[^.;]*[.;]?", re.I)
 CONTACT = re.compile(r"(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}|\S+@\S+\.\w+)")
 
@@ -130,6 +131,10 @@ def build(communities, today=None, out_dir="."):
     """communities: list of dicts with a 'name'. Returns (published, review) and writes both files."""
     today = today or datetime.date.today()
     known = {norm(c["name"]): c["name"] for c in communities}
+    # Some names belong to more than one community: there is a "Mosaic" in Port Saint Lucie AND one in
+    # Daytona Beach. The sheet gives a bare name with no county, so an offer for one would land on both.
+    from collections import Counter
+    name_counts = Counter(norm(c["name"]) for c in communities)
     # names distinctive enough that finding one in the copy really means the copy is about that community
     GENERIC = {"arden", "aria", "alton", "everton", "mosaic", "rivella", "watermark", "brookshire"}
     distinctive = {c["name"] for c in communities if len(c["name"]) >= 9 and c["name"].lower() not in GENERIC}
@@ -174,6 +179,11 @@ def build(communities, today=None, out_dir="."):
         for n in names:
             canon = match(n)
             if not canon: review["unmatched"].append({**base, "community_text": n}); continue
+            if name_counts[norm(canon)] > 1:
+                review["ambiguous"].append({**base, "community_text": n, "row_lists": len(names),
+                                            "why": f"'{canon}' is the name of {name_counts[norm(canon)]} different "
+                                                   "communities in different counties and the sheet does not say which"})
+                continue
             if named_in_copy and canon not in named_in_copy:
                 review["unmatched"].append({**base, "community_text": n,
                                             "why": f"copy names {sorted(named_in_copy)[0]}, not this community"})
@@ -184,10 +194,19 @@ def build(communities, today=None, out_dir="."):
             # community's discount). An incorrect dollar figure on a community page is a factual claim we
             # cannot make, so anything ambiguous goes to review for a human instead of onto the site.
             if len(names) > 1 and len(named_in_copy) != 1:
-                review["ambiguous"].append({**base, "community_text": n, "row_lists": len(names),
-                                            "why": "one row covers several communities and the copy does not "
-                                                   "clearly belong to just one; needs a human to split"})
-                continue
+                # A multi-community row is safe to publish to ALL of them only when the copy is genuinely
+                # builder-wide: it names no community and quotes no figure. Those rows are umbrella offers
+                # ("Meritage Homes is now providing closing cost assistance across all our communities").
+                # A dollar amount is the tell that the copy belongs to one specific community - that is how
+                # Costa Pointe's $160,000 ended up on Central Park Townhomes - so any row with a figure and
+                # no single named community is held for a human.
+                if named_in_copy or MONEY.search(details):
+                    review["ambiguous"].append({**base, "community_text": n, "row_lists": len(names),
+                                                "why": ("copy names several communities" if named_in_copy else
+                                                        "copy quotes a specific amount but does not say which "
+                                                        "community it belongs to")})
+                    continue
+                base = {**base, "builder_wide": True}
             rec = {**base, "community": canon}
             if notes: review["redactions"].append(rec)
             # Freshest information wins: the most recently posted row, then the later end date as a tie-break.

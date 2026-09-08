@@ -9,24 +9,125 @@
   "sheet_date": "2026-09-05",
   "community": "Costa Pointe"
  },
+ "Avondale at Avenir": {
+  "builder": "",
+  "expires": "2026-09-13",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": true,
+  "headline": "Unlock your dream home with exceptional savings on quick move-in properties, featuring base price reductions, homesite premium credits, and exclusive financing opportunities.",
+  "notes": [],
+  "sheet_date": "2026-08-28",
+  "builder_wide": true,
+  "community": "Avondale at Avenir"
+ },
+ "Everton": {
+  "builder": "",
+  "expires": "2026-09-13",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": true,
+  "headline": "Unlock your dream home with exceptional savings on quick move-in properties, featuring base price reductions, homesite premium credits, and exclusive financing opportunities.",
+  "notes": [],
+  "sheet_date": "2026-08-28",
+  "builder_wide": true,
+  "community": "Everton"
+ },
+ "The Reserve at Eastpointe": {
+  "builder": "",
+  "expires": "2026-09-13",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": true,
+  "headline": "Unlock your dream home with exceptional savings on quick move-in properties, featuring base price reductions, homesite premium credits, and exclusive financing opportunities.",
+  "notes": [],
+  "sheet_date": "2026-08-28",
+  "builder_wide": true,
+  "community": "The Reserve at Eastpointe"
+ },
+ "Greyhawk Landing": {
+  "builder": "",
+  "expires": "2026-09-13",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": true,
+  "headline": "Unlock your dream home with exceptional savings on quick move-in properties, featuring base price reductions, homesite premium credits, and exclusive financing opportunities.",
+  "notes": [],
+  "sheet_date": "2026-08-28",
+  "builder_wide": true,
+  "community": "Greyhawk Landing"
+ },
  "Central Park Townhomes": {
+  "builder": "Meritage Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Take control of your monthly payment with our latest offers! Meritage Homes is now providing closing cost assistance and rate lock opportunities across all our communities to help you secure your new home with confidence.",
+  "notes": [],
+  "sheet_date": "2026-09-04",
+  "builder_wide": true,
+  "community": "Central Park Townhomes"
+ },
+ "L'Ambiance at Avenir": {
+  "builder": "Kolter Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Unlock limited-time savings on move-in ready homes during our extended Savings Event, running through the end of September. Tour our designer-decorated models this weekend to discover the resort lifestyle waiting for you.",
+  "notes": [],
+  "sheet_date": "2026-09-05",
+  "builder_wide": true,
+  "community": "L'Ambiance at Avenir"
+ },
+ "Cresswind Palm Beach at Westlake": {
+  "builder": "Kolter Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Unlock limited-time savings on move-in ready homes during our extended Savings Event, running through the end of September. Tour our designer-decorated models this weekend to discover the resort lifestyle waiting for you.",
+  "notes": [],
+  "sheet_date": "2026-09-05",
+  "builder_wide": true,
+  "community": "Cresswind Palm Beach at Westlake"
+ },
+ "Artistry": {
+  "builder": "Kolter Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Unlock limited-time savings on move-in ready homes during our extended Savings Event, running through the end of September. Tour our designer-decorated models this weekend to discover the resort lifestyle waiting for you.",
+  "notes": [],
+  "sheet_date": "2026-09-05",
+  "builder_wide": true,
+  "community": "Artistry"
+ },
+ "Astor Creek Golf & Country Club": {
   "builder": "",
   "expires": "2026-09-30",
   "assumed_expiry": false,
   "shared_row_earliest_date": false,
-  "headline": "Unlock exclusive savings on your new dream home\u2014sign your contract with RJM Custom Homes by September 30 to save 3% on your base price.",
+  "headline": "Don't miss your chance to save\u2014our Savings Event has been extended through the end of September! Discover limited-time incentives across our available communities and find a home you can enjoy sooner.",
   "notes": [],
-  "sheet_date": "2026-09-03",
-  "community": "Central Park Townhomes"
+  "sheet_date": "2026-09-05",
+  "builder_wide": true,
+  "community": "Astor Creek Golf & Country Club"
  },
- "Valencia at Riverland": {
-  "builder": "GL Homes",
+ "Rivella": {
+  "builder": "",
   "expires": "2026-09-30",
   "assumed_expiry": false,
   "shared_row_earliest_date": false,
-  "headline": "Discover your dream home sooner with early move-in opportunities at Valencia at Riverland, now starting from just $381,900.",
+  "headline": "Don't miss your chance to save\u2014our Savings Event has been extended through the end of September! Discover limited-time incentives across our available communities and find a home you can enjoy sooner.",
   "notes": [],
-  "sheet_date": "2026-09-01",
+  "sheet_date": "2026-09-05",
+  "builder_wide": true,
+  "community": "Rivella"
+ },
+ "Valencia at Riverland": {
+  "builder": "",
+  "expires": "2026-09-13",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": true,
+  "headline": "Unlock affordable luxury and maximize your investment with our exclusive builder incentives and limited-time savings event on select new construction homes.",
+  "notes": [],
+  "sheet_date": "2026-09-03",
+  "builder_wide": true,
   "community": "Valencia at Riverland"
  },
  "Salerno Reserve": {
@@ -38,6 +139,39 @@
   "notes": [],
   "sheet_date": "2026-09-05",
   "community": "Salerno Reserve"
+ },
+ "Terra Lago": {
+  "builder": "Meritage Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Take control of your monthly payment with our latest offers! Meritage Homes is now providing closing cost assistance and rate lock opportunities across all our communities to help you secure your new home with confidence.",
+  "notes": [],
+  "sheet_date": "2026-09-04",
+  "builder_wide": true,
+  "community": "Terra Lago"
+ },
+ "Hampton Park": {
+  "builder": "Meritage Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Take control of your monthly payment with our latest offers! Meritage Homes is now providing closing cost assistance and rate lock opportunities across all our communities to help you secure your new home with confidence.",
+  "notes": [],
+  "sheet_date": "2026-09-04",
+  "builder_wide": true,
+  "community": "Hampton Park"
+ },
+ "Tidewater": {
+  "builder": "Meritage Homes",
+  "expires": "2026-09-30",
+  "assumed_expiry": false,
+  "shared_row_earliest_date": false,
+  "headline": "Take control of your monthly payment with our latest offers! Meritage Homes is now providing closing cost assistance and rate lock opportunities across all our communities to help you secure your new home with confidence.",
+  "notes": [],
+  "sheet_date": "2026-09-04",
+  "builder_wide": true,
+  "community": "Tidewater"
  },
  "Solana Bay at Avenir": {
   "builder": "",
